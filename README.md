@@ -18,7 +18,10 @@ configuration and needs no root access.
    Other SVG commands are rejected rather than exported with a misleading
    preview. For complex paths, create an approximation path separately; its
    outline is shown in cyan when enabled.
-4. Rotate or enlarge the preview for inspection. The display drawing is an
+4. Rotate the preview or open **Full screen** to see the drawing edge-to-edge
+   without guides or corner handles. Tap anywhere or press Back to return to
+   the editor. If the target display's aspect ratio differs from this device,
+   unused space remains around the drawing. The display drawing is an
    approximation, not the framework's actual cutout/insets calculation.
 5. Use **View XML** to inspect the output. **Export XML** saves
    `display_shape.xml` through Android's document picker. The editable draft is

@@ -17,6 +17,7 @@ final class ShapePreview extends View {
     private ShapeConfig config;
     private CornerListener listener;
     private boolean rotated;
+    private boolean fullScreen;
     private boolean approximationVisible = true;
     private float scale;
     private int dragCorner = -1;
@@ -30,6 +31,7 @@ final class ShapePreview extends View {
 
     void setConfig(ShapeConfig value) { config = value; invalidate(); }
     void setRotated(boolean value) { rotated = value; invalidate(); }
+    void setFullScreen(boolean value) { fullScreen = value; invalidate(); }
     void setApproximationVisible(boolean value) { approximationVisible = value; invalidate(); }
 
     @Override protected void onDraw(Canvas canvas) {
@@ -38,7 +40,8 @@ final class ShapePreview extends View {
         int height = Math.max(1, config.height);
         float viewWidth = rotated ? height : width;
         float viewHeight = rotated ? width : height;
-        scale = Math.min((getWidth() - 48f) / viewWidth, (getHeight() - 48f) / viewHeight);
+        float inset = fullScreen ? 0 : 48f;
+        scale = Math.min((getWidth() - inset) / viewWidth, (getHeight() - inset) / viewHeight);
         if (scale <= 0) return;
         float drawnWidth = viewWidth * scale;
         float drawnHeight = viewHeight * scale;
@@ -56,10 +59,12 @@ final class ShapePreview extends View {
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(Color.rgb(236, 243, 250));
         canvas.drawRect(0, 0, width, height, paint);
-        paint.setColor(Color.rgb(194, 210, 225));
-        paint.setStrokeWidth(Math.max(1, 1 / scale));
-        for (int x = 0; x < width; x += 100) canvas.drawLine(x, 0, x, height, paint);
-        for (int y = 0; y < height; y += 100) canvas.drawLine(0, y, width, y, paint);
+        if (!fullScreen) {
+            paint.setColor(Color.rgb(194, 210, 225));
+            paint.setStrokeWidth(Math.max(1, 1 / scale));
+            for (int x = 0; x < width; x += 100) canvas.drawLine(x, 0, x, height, paint);
+            for (int y = 0; y < height; y += 100) canvas.drawLine(0, y, width, y, paint);
+        }
 
         float upper = radius(true, width, height);
         float lower = radius(false, width, height);
@@ -100,11 +105,13 @@ final class ShapePreview extends View {
         } catch (IllegalArgumentException ignored) {
             // The editor reports the error; preserve the rest of the preview while typing.
         }
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(0, 150, 185));
-        float handle = Math.max(7, 9 / scale);
-        canvas.drawCircle(upper, upper, handle, paint);
-        canvas.drawCircle(lower, height - lower, handle, paint);
+        if (!fullScreen) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.rgb(0, 150, 185));
+            float handle = Math.max(7, 9 / scale);
+            canvas.drawCircle(upper, upper, handle, paint);
+            canvas.drawCircle(lower, height - lower, handle, paint);
+        }
         canvas.restore();
     }
 

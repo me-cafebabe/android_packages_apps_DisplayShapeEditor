@@ -2,13 +2,18 @@ package org.lineageos.displayshapeeditor;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.DisplayMetrics;
 import android.view.View;
+import android.view.MotionEvent;
+import android.view.Window;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -124,14 +129,7 @@ public final class MainActivity extends Activity {
             rotated = !rotated;
             preview.setRotated(rotated);
         }));
-        addHalf(actions, button("Full screen", () -> {
-            ShapePreview large = new ShapePreview(this, config, null);
-            large.setRotated(rotated);
-            large.setLayoutParams(new LinearLayout.LayoutParams(-1,
-                    getResources().getDisplayMetrics().heightPixels * 2 / 3));
-            new AlertDialog.Builder(this).setTitle("Display preview")
-                    .setView(large).setPositiveButton("Close", null).show();
-        }));
+        addHalf(actions, button("Full screen", this::showFullScreenPreview));
 
         ScrollView scroll = new ScrollView(this);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -217,6 +215,35 @@ public final class MainActivity extends Activity {
         addHalf(files, button("Export XML", this::exportXml));
         addHalf(row(form), button("View XML", this::viewXml));
         changed();
+    }
+
+    private void showFullScreenPreview() {
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar);
+        ShapePreview large = new ShapePreview(this, config, null);
+        large.setRotated(rotated);
+        large.setFullScreen(true);
+        large.setOnTouchListener((view, event) -> {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) dialog.dismiss();
+            return true;
+        });
+        dialog.setContentView(large);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.layoutInDisplayCutoutMode = Build.VERSION.SDK_INT >= 30
+                    ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            window.setAttributes(attributes);
+            window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        }
+        dialog.show();
+        if (window != null) window.setLayout(-1, -1);
     }
 
     private int integer(String input) {
