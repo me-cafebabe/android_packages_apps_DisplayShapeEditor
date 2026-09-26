@@ -86,6 +86,7 @@ final class OverlayXml {
         String rect = entries.get("string/config_mainBuiltInDisplayCutoutRectApproximation");
         if (rect != null) {
             c.approximation = rect.equals("@string/config_mainBuiltInDisplayCutout") ? "" : rect;
+            c.linkApproximation = c.approximation.isEmpty();
         }
         c.fill = Boolean.parseBoolean(get(entries, "bool/config_fillMainBuiltInDisplayCutout",
                 Boolean.toString(c.fill)));

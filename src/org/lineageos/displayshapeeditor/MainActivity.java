@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.text.InputType;
 import android.util.DisplayMetrics;
 import android.view.View;
 import android.view.MotionEvent;
@@ -28,6 +29,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
+import java.util.List;
 
 public final class MainActivity extends Activity {
     private static final int OPEN_XML = 1;
@@ -38,11 +40,15 @@ public final class MainActivity extends Activity {
     private EditText topField;
     private EditText bottomField;
     private EditText pathField;
+    private EditText approximationField;
     private EditText widthField;
     private EditText heightField;
     private EditText xField;
     private EditText yField;
     private boolean updatingPath;
+    private boolean editApproximation;
+    private TextView pointLabel;
+    private int lastPresetX, lastPresetY;
     private boolean rotated;
     private boolean expandedCanvas;
 
@@ -137,6 +143,38 @@ public final class MainActivity extends Activity {
             xField.setText(Integer.toString(x));
             yField.setText(Integer.toString(y));
         });
+        preview.setEditApproximation(editApproximation);
+        preview.setPathListener(new ShapePreview.PathListener() {
+            @Override public void onPointSelected(int index, float x, float y) {
+                pointLabel.setText(String.format(java.util.Locale.ROOT,
+                        "Point %d: %.1f, %.1f px (tap coordinates for exact values)",
+                        index + 1, x, y));
+            }
+
+            @Override public void onPathChanged(boolean bounds, String path) {
+                if (bounds) {
+                    approximationField.setText(path);
+                } else {
+                    String old = config.cutout;
+                    if (config.linkApproximation && !config.approximation.isEmpty()) {
+                        int selected = preview.getSelectedPoint();
+                        try {
+                            List<PathEditor.Point> before = PathEditor.points(old, config.width,
+                                    config.height, config.densityDpi);
+                            List<PathEditor.Point> after = PathEditor.points(path, config.width,
+                                    config.height, config.densityDpi);
+                            syncApproximation(old, path,
+                                    after.get(selected).x - before.get(selected).x,
+                                    after.get(selected).y - before.get(selected).y);
+                        } catch (RuntimeException ignored) { /* Keep an independently edited bound. */ }
+                    }
+                    updatingPath = true;
+                    pathField.setText(path);
+                    updatingPath = false;
+                }
+                changed();
+            }
+        });
         root.addView(preview, new LinearLayout.LayoutParams(-1, canvasHeight()));
         LinearLayout actions = row(root);
         addHalf(actions, button("Rotate", () -> {
@@ -156,6 +194,10 @@ public final class MainActivity extends Activity {
             resize.setText(expandedCanvas ? "Smaller" : "Larger");
         });
         addHalf(actions, button("Full screen", this::showFullScreenPreview));
+        LinearLayout zoomControls = row(root);
+        addHalf(zoomControls, button("1x", () -> preview.setZoom(1)));
+        addHalf(zoomControls, button("2x", () -> preview.setZoom(2)));
+        addHalf(zoomControls, button("4x", () -> preview.setZoom(4)));
 
         ScrollView scroll = new ScrollView(this);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -236,10 +278,46 @@ public final class MainActivity extends Activity {
                 });
         pathField.setSingleLine(false);
         pathField.setMinLines(2);
-        EditText approximation = field(row(form), "Bounding approximation (optional)",
+        approximationField = field(row(form), "Bounding approximation (optional)",
                 config.approximation, s -> config.approximation = s);
-        approximation.setSingleLine(false);
-        approximation.setMinLines(2);
+        approximationField.setSingleLine(false);
+        approximationField.setMinLines(2);
+        LinearLayout pathModes = row(form);
+        addHalf(pathModes, button("Edit visible path", () -> {
+            editApproximation = false;
+            if (config.preset != 0) {
+                config.preset = 0;
+                showEditor();
+            } else {
+                preview.setEditApproximation(false);
+                pointLabel.setText("Tap a path point to edit it");
+            }
+        }));
+        addHalf(pathModes, button("Edit bounds", () -> {
+            if (config.cutout.isEmpty()) { message("Create a cutout first"); return; }
+            if (config.approximation.isEmpty()) approximationField.setText(config.cutout);
+            config.linkApproximation = false;
+            editApproximation = true;
+            preview.setEditApproximation(true);
+            pointLabel.setText("Tap a bounding path point to edit it");
+            changed();
+        }));
+        CheckBox linkBounds = new CheckBox(this);
+        linkBounds.setText("Move approximation with visible path");
+        linkBounds.setChecked(config.linkApproximation);
+        linkBounds.setOnCheckedChangeListener((v, checked) -> {
+            config.linkApproximation = checked;
+            changed();
+        });
+        form.addView(linkBounds);
+        pointLabel = text("Tap a path point to edit it", 13);
+        form.addView(pointLabel);
+        LinearLayout nudges = row(form);
+        addHalf(nudges, button("X -1", () -> nudge(-1, 0)));
+        addHalf(nudges, button("X +1", () -> nudge(1, 0)));
+        addHalf(nudges, button("Y -1", () -> nudge(0, -1)));
+        addHalf(nudges, button("Y +1", () -> nudge(0, 1)));
+        addHalf(row(form), button("Point coordinates...", this::editPointCoordinates));
         CheckBox showBounds = new CheckBox(this);
         showBounds.setText("Show approximation in cyan");
         showBounds.setChecked(true);
@@ -266,7 +344,82 @@ public final class MainActivity extends Activity {
         addHalf(files, button("Import XML", this::importXml));
         addHalf(files, button("Export XML", this::exportXml));
         addHalf(row(form), button("View XML", this::viewXml));
+        lastPresetX = config.offsetX;
+        lastPresetY = config.offsetY;
         changed();
+    }
+
+    private void nudge(int dx, int dy) {
+        List<PathEditor.Point> points = selectedPoints();
+        int selected = preview.getSelectedPoint();
+        if (selected < 0 || points == null || selected >= points.size()) return;
+        PathEditor.Point point = points.get(selected);
+        changeSelectedPoint(point.x + dx, point.y + dy);
+    }
+
+    private List<PathEditor.Point> selectedPoints() {
+        String spec = editApproximation ? config.approximation : config.cutout;
+        if (spec.isEmpty()) return null;
+        try { return PathEditor.points(spec, config.width, config.height, config.densityDpi); }
+        catch (IllegalArgumentException e) { message(e.getMessage()); return null; }
+    }
+
+    private void changeSelectedPoint(float x, float y) {
+        int index = preview.getSelectedPoint();
+        List<PathEditor.Point> points = selectedPoints();
+        if (index < 0 || points == null || index >= points.size()) return;
+        String spec = editApproximation ? config.approximation : config.cutout;
+        String updated = PathEditor.movePoint(spec, config.width, config.height,
+                config.densityDpi, index, x, y);
+        if (editApproximation) approximationField.setText(updated);
+        else {
+            syncApproximation(spec, updated, x - points.get(index).x, y - points.get(index).y);
+            updatingPath = true;
+            pathField.setText(updated);
+            updatingPath = false;
+        }
+        pointLabel.setText(String.format(java.util.Locale.ROOT,
+                "Point %d: %.1f, %.1f px", index + 1, x, y));
+        changed();
+    }
+
+    private void editPointCoordinates() {
+        List<PathEditor.Point> points = selectedPoints();
+        int selected = preview.getSelectedPoint();
+        if (selected < 0 || points == null || selected >= points.size()) {
+            message("Tap a path point first");
+            return;
+        }
+        PathEditor.Point point = points.get(selected);
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        EditText x = new EditText(this);
+        EditText y = new EditText(this);
+        x.setHint("X in native pixels");
+        y.setHint("Y in native pixels");
+        x.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                | InputType.TYPE_NUMBER_FLAG_SIGNED);
+        y.setInputType(x.getInputType());
+        x.setText(Float.toString(point.x));
+        y.setText(Float.toString(point.y));
+        fields.addView(x);
+        fields.addView(y);
+        new AlertDialog.Builder(this).setTitle("Point " + (selected + 1))
+                .setView(fields).setNegativeButton("Cancel", null)
+                .setPositiveButton("Apply", (dialog, which) -> {
+                    try { changeSelectedPoint(Float.parseFloat(x.getText().toString()),
+                            Float.parseFloat(y.getText().toString())); }
+                    catch (NumberFormatException e) { message("Enter valid coordinates"); }
+                }).show();
+    }
+
+    private void syncApproximation(String previous, String updated, float dx, float dy) {
+        if (!config.linkApproximation || config.approximation.isEmpty()) return;
+        try {
+            approximationField.setText(config.approximation.equals(previous) ? updated
+                    : PathEditor.translate(config.approximation, config.width, config.height,
+                            config.densityDpi, dx, dy));
+        } catch (IllegalArgumentException ignored) { /* Preserve invalid text for correction. */ }
     }
 
     private int canvasHeight() {
@@ -310,6 +463,7 @@ public final class MainActivity extends Activity {
     }
 
     private void setPreset(int preset) {
+        editApproximation = false;
         config.preset = preset;
         config.shapeWidth = preset == 3 ? 60 : 220;
         config.shapeHeight = preset == 3 ? 60 : 80;
@@ -323,12 +477,17 @@ public final class MainActivity extends Activity {
 
     private void updatePreset() {
         if (config.shapeWidth < 1 || config.shapeHeight < 1 || config.curve < 0) return;
+        String old = config.cutout;
         config.updatePresetPath();
         if (pathField != null) {
+            if (approximationField != null) syncApproximation(old, config.cutout,
+                    config.offsetX - lastPresetX, config.offsetY - lastPresetY);
             updatingPath = true;
             pathField.setText(config.cutout);
             updatingPath = false;
         }
+        lastPresetX = config.offsetX;
+        lastPresetY = config.offsetY;
         preview.invalidate();
     }
 

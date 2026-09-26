@@ -25,6 +25,7 @@ final class ShapeConfig {
     int offsetX;
     int offsetY;
     int curve;
+    boolean linkApproximation = true;
 
     void updatePresetPath() {
         if (preset == 0) return;
@@ -115,7 +116,8 @@ final class ShapeConfig {
                 .put("topAdjustment", topAdjustment).put("bottomAdjustment", bottomAdjustment);
         json.put("preset", preset).put("shapeWidth", shapeWidth)
                 .put("shapeHeight", shapeHeight).put("offsetX", offsetX)
-                .put("offsetY", offsetY).put("curve", curve);
+                .put("offsetY", offsetY).put("curve", curve)
+                .put("linkApproximation", linkApproximation);
         return json;
     }
 
@@ -141,6 +143,7 @@ final class ShapeConfig {
         c.offsetX = json.optInt("offsetX");
         c.offsetY = json.optInt("offsetY");
         c.curve = json.optInt("curve");
+        c.linkApproximation = json.optBoolean("linkApproximation", true);
         return c;
     }
 }

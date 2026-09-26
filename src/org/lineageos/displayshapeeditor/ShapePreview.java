@@ -9,15 +9,25 @@ import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.util.List;
+
 final class ShapePreview extends View {
     interface CornerListener { void onRadius(boolean top, int pixels); }
     interface ShapeListener { void onShape(int width, int height, int offsetX, int offsetY); }
+    interface PathListener {
+        void onPointSelected(int index, float x, float y);
+        void onPathChanged(boolean approximation, String path);
+    }
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF bounds = new RectF();
     private ShapeConfig config;
     private CornerListener listener;
     private ShapeListener shapeListener;
+    private PathListener pathListener;
+    private boolean editApproximation;
+    private int selectedPoint = -1;
+    private boolean draggingPoint;
     private boolean rotated;
     private boolean fullScreen;
     private boolean approximationVisible = true;
@@ -26,6 +36,11 @@ final class ShapePreview extends View {
     private int dragShape = -1;
     private float downX, downY;
     private int initialX, initialY;
+    private boolean panning;
+    private float panX, panY;
+    private float zoom = 1;
+    private float pinchDistance, pinchZoom;
+    private float startPanX, startPanY;
 
     ShapePreview(Context context, ShapeConfig config, CornerListener listener) {
         super(context);
@@ -35,10 +50,24 @@ final class ShapePreview extends View {
     }
 
     void setConfig(ShapeConfig value) { config = value; invalidate(); }
-    void setRotated(boolean value) { rotated = value; invalidate(); }
+    void setRotated(boolean value) { rotated = value; resetViewport(); }
     void setFullScreen(boolean value) { fullScreen = value; invalidate(); }
     void setApproximationVisible(boolean value) { approximationVisible = value; invalidate(); }
     void setShapeListener(ShapeListener value) { shapeListener = value; invalidate(); }
+    void setPathListener(PathListener value) { pathListener = value; invalidate(); }
+    void setEditApproximation(boolean value) {
+        editApproximation = value;
+        selectedPoint = -1;
+        invalidate();
+    }
+    void setZoom(float value) { zoom = Math.max(1, Math.min(6, value)); panX = panY = 0; invalidate(); }
+    float getZoom() { return zoom; }
+    int getSelectedPoint() { return selectedPoint; }
+    void resetViewport() { zoom = 1; panX = panY = 0; invalidate(); }
+
+    private String editableSpec() {
+        return editApproximation ? config.approximation : config.preset == 0 ? config.cutout : "";
+    }
 
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -47,15 +76,16 @@ final class ShapePreview extends View {
         float viewWidth = rotated ? height : width;
         float viewHeight = rotated ? width : height;
         float inset = fullScreen ? 0 : 48f;
-        scale = Math.min((getWidth() - inset) / viewWidth, (getHeight() - inset) / viewHeight);
+        scale = Math.min((getWidth() - inset) / viewWidth, (getHeight() - inset) / viewHeight) * zoom;
         if (scale <= 0) return;
         float drawnWidth = viewWidth * scale;
         float drawnHeight = viewHeight * scale;
-        float left = (getWidth() - drawnWidth) / 2;
-        float top = (getHeight() - drawnHeight) / 2;
+        float left = (getWidth() - drawnWidth) / 2 + panX;
+        float top = (getHeight() - drawnHeight) / 2 + panY;
         bounds.set(left, top, left + drawnWidth, top + drawnHeight);
 
         canvas.save();
+        canvas.clipRect(0, 0, getWidth(), getHeight());
         canvas.translate(left, top);
         if (rotated) {
             canvas.translate(height * scale, 0);
@@ -117,13 +147,36 @@ final class ShapePreview extends View {
             float handle = Math.max(7, 9 / scale);
             canvas.drawCircle(upper, upper, handle, paint);
             canvas.drawCircle(lower, height - lower, handle, paint);
-            if (config.preset != 0 && shapeListener != null) {
+            if (config.preset != 0 && shapeListener != null && !editApproximation) {
                 float cx = shapeCenterX();
                 float cy = config.offsetY + config.shapeHeight / 2f;
                 paint.setColor(Color.rgb(212, 79, 35));
                 canvas.drawCircle(cx, cy, handle, paint);
                 canvas.drawCircle(cx + config.shapeWidth / 2f, cy, handle, paint);
                 canvas.drawCircle(cx, config.offsetY + config.shapeHeight, handle, paint);
+            }
+            if (pathListener != null && !editableSpec().isEmpty()) {
+                try {
+                    List<PathEditor.Point> points = PathEditor.points(editableSpec(), width, height,
+                            config.densityDpi);
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(Math.max(1, 2 / scale));
+                    paint.setColor(Color.rgb(243, 112, 32));
+                    float anchorX = 0, anchorY = 0;
+                    for (PathEditor.Point point : points) {
+                        if (point.control) canvas.drawLine(anchorX, anchorY, point.x, point.y, paint);
+                        else { anchorX = point.x; anchorY = point.y; }
+                    }
+                    paint.setStyle(Paint.Style.FILL);
+                    for (int i = 0; i < points.size(); i++) {
+                        PathEditor.Point point = points.get(i);
+                        paint.setColor(i == selectedPoint ? Color.rgb(228, 56, 35)
+                                : point.control ? Color.rgb(255, 161, 47) : Color.rgb(10, 145, 145));
+                        canvas.drawCircle(point.x, point.y, Math.max(6, 8 / scale), paint);
+                    }
+                } catch (IllegalArgumentException ignored) {
+                    // Invalid paths remain editable as text.
+                }
             }
         }
         canvas.restore();
@@ -144,12 +197,62 @@ final class ShapePreview extends View {
     }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
-        if ((listener == null && shapeListener == null) || rotated || scale <= 0) return false;
-        float x = (event.getX() - bounds.left) / scale;
-        float y = (event.getY() - bounds.top) / scale;
+        if (scale <= 0 || fullScreen) return false;
+        if (event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() == 2) {
+            pinchDistance = (float) Math.hypot(event.getX(0) - event.getX(1),
+                    event.getY(0) - event.getY(1));
+            pinchZoom = zoom;
+            dragCorner = dragShape = -1;
+            selectedPoint = -1;
+            draggingPoint = false;
+            panning = false;
+            return true;
+        }
+        if (event.getPointerCount() == 2 && event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+            float distance = (float) Math.hypot(event.getX(0) - event.getX(1),
+                    event.getY(0) - event.getY(1));
+            if (pinchDistance > 0) {
+                zoom = Math.max(1, Math.min(6, pinchZoom * distance / pinchDistance));
+                invalidate();
+            }
+            return true;
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_POINTER_UP) {
+            int remaining = event.getActionIndex() == 0 ? 1 : 0;
+            downX = event.getX(remaining);
+            downY = event.getY(remaining);
+            startPanX = panX;
+            startPanY = panY;
+            panning = true;
+            return true;
+        }
+        float x = rotated ? (event.getY() - bounds.top) / scale
+                : (event.getX() - bounds.left) / scale;
+        float y = rotated ? config.height - (event.getX() - bounds.left) / scale
+                : (event.getY() - bounds.top) / scale;
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            downX = event.getX();
+            downY = event.getY();
+            startPanX = panX;
+            startPanY = panY;
             float threshold = 44 * getResources().getDisplayMetrics().density / scale;
-            if (config.preset != 0 && shapeListener != null) {
+            if (pathListener != null && !editableSpec().isEmpty()) {
+                try {
+                    List<PathEditor.Point> points = PathEditor.points(editableSpec(),
+                            config.width, config.height, config.densityDpi);
+                    for (int i = points.size() - 1; i >= 0; i--) {
+                        PathEditor.Point point = points.get(i);
+                        if (Math.hypot(x - point.x, y - point.y) < threshold) {
+                            selectedPoint = i;
+                            draggingPoint = true;
+                            pathListener.onPointSelected(i, point.x, point.y);
+                            invalidate();
+                            return true;
+                        }
+                    }
+                } catch (IllegalArgumentException ignored) { /* Text editor reports invalid paths. */ }
+            }
+            if (!editApproximation && config.preset != 0 && shapeListener != null) {
                 float cx = shapeCenterX();
                 float cy = config.offsetY + config.shapeHeight / 2f;
                 if (Math.hypot(x - (cx + config.shapeWidth / 2f), y - cy) < threshold) {
@@ -168,12 +271,23 @@ final class ShapePreview extends View {
                     return true;
                 }
             }
-            if (listener == null) return false;
-            float upper = radius(true, config.width, config.height);
-            float lower = radius(false, config.width, config.height);
-            if (Math.hypot(x - upper, y - upper) < threshold) dragCorner = 0;
-            else if (Math.hypot(x - lower, y - (config.height - lower)) < threshold) dragCorner = 1;
-            else return false;
+            if (listener != null && !editApproximation) {
+                float upper = radius(true, config.width, config.height);
+                float lower = radius(false, config.width, config.height);
+                if (Math.hypot(x - upper, y - upper) < threshold) dragCorner = 0;
+                else if (Math.hypot(x - lower, y - (config.height - lower)) < threshold) dragCorner = 1;
+            }
+            if (dragCorner == -1) panning = true;
+            return true;
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_MOVE && draggingPoint
+                && pathListener != null) {
+            try {
+                String updated = PathEditor.movePoint(editableSpec(), config.width, config.height,
+                        config.densityDpi, selectedPoint, x, y);
+                pathListener.onPathChanged(editApproximation, updated);
+                pathListener.onPointSelected(selectedPoint, x, y);
+            } catch (IllegalArgumentException ignored) { /* Keep the previous valid path. */ }
             return true;
         }
         if (event.getActionMasked() == MotionEvent.ACTION_MOVE && dragShape != -1) {
@@ -198,10 +312,18 @@ final class ShapePreview extends View {
                     Math.max(0, Math.min(radius, Math.min(config.width, config.height) / 2)));
             return true;
         }
+        if (event.getActionMasked() == MotionEvent.ACTION_MOVE && panning) {
+            panX = startPanX + event.getX() - downX;
+            panY = startPanY + event.getY() - downY;
+            invalidate();
+            return true;
+        }
         if (event.getActionMasked() == MotionEvent.ACTION_UP
                 || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
             dragCorner = -1;
             dragShape = -1;
+            draggingPoint = false;
+            panning = false;
             return true;
         }
         return false;
