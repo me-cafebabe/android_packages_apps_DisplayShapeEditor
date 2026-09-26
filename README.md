@@ -13,7 +13,11 @@ configuration and needs no root access.
    values with `px`/`dp` units. A zero top/bottom radius inherits the default.
 3. Choose a notch, pill, or hole-punch preset. Drag its orange handles to move
    it or adjust width and height, or drag inside the dark cutout to move the
-   entire shape. The width, height, and curvature fields control the preset.
+   entire shape. The square grip just beyond the lower-right corner of its
+   bounding box resizes the whole cutout from the opposite, upper-left corner.
+   This works for presets and custom or imported paths (including curves); zoom
+   in when working with a very small cutout. The width, height, and curvature
+   fields control the preset.
    The position inputs use the selected shape's center X (from the display's
    left edge) and top Y (from its top edge), in native pixels. Editing the SVG
    text switches to custom mode; there is no automatic conversion back to a
@@ -24,12 +28,12 @@ configuration and needs no root access.
    empty canvas to pan; the `1x` and `2x` buttons reset the view.
 4. Use **Edit bounds** to create and separately edit the cutout's bounding
    approximation. Its position inputs then move the approximation rather than
-   the visible cutout. Drag inside it to move it independently;
+   the visible cutout. Its square resize grip scales just the approximation.
+   Drag inside it to move it independently;
    its outline is cyan. If the approximation is empty, the framework uses the
-   visible path; enabling **Move approximation with visible
-   path** translates a custom approximation when the cutout is moved, but
-   resizing a preset does not automatically resize a refined approximation.
-   Check both paths after changing size.
+   visible path; enabling **Move approximation with visible path** also moves
+   and scales a refined approximation when resizing the visible cutout. Check
+   both outlines after changing size.
 5. Paths start at the top center by default. `@left`, `@right`, `@bottom`,
    `@cutout`, and a trailing `@dp` are supported. The supported path commands
    are `M`, `L`, `H`, `V`, `Q`, `C`, `Z` and their relative lowercase equivalents.

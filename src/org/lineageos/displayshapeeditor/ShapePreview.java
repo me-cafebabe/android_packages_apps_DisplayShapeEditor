@@ -39,6 +39,11 @@ final class ShapePreview extends View {
     private boolean draggingCutout;
     private String cutoutAtDown;
     private float cutoutDownX, cutoutDownY;
+    private boolean resizingCutout;
+    private String cutoutBeforeResize;
+    private final RectF originalCutoutBounds = new RectF();
+    private float resizeDownX, resizeDownY;
+    private int originalWidth, originalHeight, originalOffsetX, originalOffsetY;
     private float downX, downY;
     private int initialX, initialY;
     private boolean panning;
@@ -185,6 +190,19 @@ final class ShapePreview extends View {
                     // Invalid paths remain editable as text.
                 }
             }
+            RectF cutoutBounds = currentCutoutBounds();
+            if (cutoutBounds != null) {
+                float hx = resizeHandleX(cutoutBounds);
+                float hy = resizeHandleY(cutoutBounds);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(Math.max(1, 2 / scale));
+                paint.setColor(Color.rgb(212, 79, 35));
+                canvas.drawRect(cutoutBounds, paint);
+                canvas.drawLine(cutoutBounds.right, cutoutBounds.bottom, hx, hy, paint);
+                paint.setStyle(Paint.Style.FILL);
+                float grip = 9 / scale;
+                canvas.drawRect(hx - grip, hy - grip, hx + grip, hy + grip, paint);
+            }
         }
         canvas.restore();
     }
@@ -201,6 +219,27 @@ final class ShapePreview extends View {
     private float shapeCenterX() {
         return (config.preset == 4 ? 0 : config.width / 2f) + config.offsetX
                 + (config.preset == 4 ? config.shapeWidth / 2f : 0);
+    }
+
+    private RectF currentCutoutBounds() {
+        String spec = editApproximation ? config.approximation : config.cutout;
+        if (spec.trim().isEmpty()) return null;
+        try {
+            RectF rect = new RectF();
+            CutoutPath.parse(spec, config.width, config.height, config.densityDpi)
+                    .computeBounds(rect, true);
+            return rect.width() > 0 && rect.height() > 0 ? rect : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private float resizeHandleX(RectF rect) {
+        return Math.min(rect.right + 16 / scale, config.width - 10 / scale);
+    }
+
+    private float resizeHandleY(RectF rect) {
+        return Math.min(rect.bottom + 16 / scale, config.height - 10 / scale);
     }
 
     private boolean insideCutout(float x, float y) {
@@ -224,6 +263,7 @@ final class ShapePreview extends View {
             pinchZoom = zoom;
             dragCorner = dragShape = -1;
             draggingCutout = false;
+            resizingCutout = false;
             selectedPoint = -1;
             draggingPoint = false;
             panning = false;
@@ -257,6 +297,21 @@ final class ShapePreview extends View {
             startPanX = panX;
             startPanY = panY;
             float threshold = 44 * getResources().getDisplayMetrics().density / scale;
+            RectF cutoutBounds = currentCutoutBounds();
+            if (cutoutBounds != null && Math.hypot(x - resizeHandleX(cutoutBounds),
+                    y - resizeHandleY(cutoutBounds)) < 12 / scale) {
+                resizingCutout = true;
+                selectedPoint = -1;
+                cutoutBeforeResize = editApproximation ? config.approximation : config.cutout;
+                originalCutoutBounds.set(cutoutBounds);
+                resizeDownX = x;
+                resizeDownY = y;
+                originalWidth = config.shapeWidth;
+                originalHeight = config.shapeHeight;
+                originalOffsetX = config.offsetX;
+                originalOffsetY = config.offsetY;
+                return true;
+            }
             boolean inside = insideCutout(x, y);
             if (pathListener != null && !editableSpec().isEmpty()) {
                 try {
@@ -339,6 +394,26 @@ final class ShapePreview extends View {
             } catch (IllegalArgumentException ignored) { /* Keep the last valid geometry. */ }
             return true;
         }
+        if (event.getActionMasked() == MotionEvent.ACTION_MOVE && resizingCutout) {
+            float newWidth = Math.max(1, originalCutoutBounds.width() + x - resizeDownX);
+            float newHeight = Math.max(1, originalCutoutBounds.height() + y - resizeDownY);
+            if (!editApproximation && config.preset != 0 && shapeListener != null) {
+                int width = Math.max(1, originalWidth + Math.round(x - resizeDownX));
+                int height = Math.max(1, originalHeight + Math.round(y - resizeDownY));
+                int offsetX = config.preset == 4 ? originalOffsetX
+                        : originalOffsetX - originalWidth / 2 + width / 2;
+                shapeListener.onShape(width, height, offsetX, originalOffsetY);
+            } else if (pathListener != null) {
+                RectF resized = new RectF(originalCutoutBounds.left, originalCutoutBounds.top,
+                        originalCutoutBounds.left + newWidth, originalCutoutBounds.top + newHeight);
+                try {
+                    pathListener.onPathChanged(editApproximation, PathEditor.resize(cutoutBeforeResize,
+                            config.width, config.height, config.densityDpi,
+                            originalCutoutBounds, resized));
+                } catch (IllegalArgumentException ignored) { /* Keep the previous valid path. */ }
+            }
+            return true;
+        }
         if (event.getActionMasked() == MotionEvent.ACTION_MOVE && dragShape != -1) {
             int width = config.shapeWidth, height = config.shapeHeight;
             int offsetX = config.offsetX, offsetY = config.offsetY;
@@ -372,6 +447,7 @@ final class ShapePreview extends View {
             dragCorner = -1;
             dragShape = -1;
             draggingCutout = false;
+            resizingCutout = false;
             draggingPoint = false;
             panning = false;
             return true;
