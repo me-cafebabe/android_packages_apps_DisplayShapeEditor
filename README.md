@@ -43,6 +43,8 @@ configuration and needs no root access.
    also saved locally between launches. **Import XML** accepts a values XML
    file and reads supported resources; dimensions, density and unknown resources
    are not inferred from the file.
+   **Reset** asks for confirmation before starting a fresh draft with this
+   device's display dimensions; it does not delete previously exported files.
 
 ## Device-tree integration
 

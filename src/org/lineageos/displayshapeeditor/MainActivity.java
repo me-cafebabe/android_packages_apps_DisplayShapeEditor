@@ -131,10 +131,12 @@ public final class MainActivity extends Activity {
         root.setBackgroundColor(Color.rgb(247, 249, 252));
         setContentView(root);
 
+        LinearLayout header = row(root);
         TextView title = text("DISPLAY / SHAPE", 23);
         title.setTextColor(Color.rgb(0, 93, 120));
         title.setPadding(dp(18), dp(14), dp(18), dp(10));
-        root.addView(title);
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        header.addView(button("Reset", this::confirmReset));
         preview = new ShapePreview(this, config, this::updateRadius);
         preview.setShapeListener(this::updateShape);
         preview.setEditApproximation(editApproximation);
@@ -438,6 +440,24 @@ public final class MainActivity extends Activity {
         if (!expandedCanvas) return dp(320);
         return Math.max(dp(320), Math.min(dp(560),
                 Math.round(getResources().getDisplayMetrics().heightPixels * 0.68f)));
+    }
+
+    private void confirmReset() {
+        new AlertDialog.Builder(this).setTitle("Reset draft?")
+                .setMessage("Clear the cutout and corner settings and use this device's display "
+                        + "dimensions? Exported XML files will not be changed.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Reset", (dialog, which) -> {
+                    config = new ShapeConfig();
+                    config.width = getWindowManager().getDefaultDisplay().getMode().getPhysicalWidth();
+                    config.height = getWindowManager().getDefaultDisplay().getMode().getPhysicalHeight();
+                    config.densityDpi = getResources().getDisplayMetrics().densityDpi;
+                    rotated = false;
+                    expandedCanvas = false;
+                    editApproximation = false;
+                    getPreferences(MODE_PRIVATE).edit().putBoolean("expandedCanvas", false).apply();
+                    showEditor();
+                }).show();
     }
 
     private void showFullScreenPreview() {
