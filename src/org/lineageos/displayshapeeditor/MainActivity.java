@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
     private EditText approximationField;
     private EditText widthField;
     private EditText heightField;
+    private EditText curveField;
     private EditText xField;
     private EditText yField;
     private boolean updatingPath;
@@ -53,9 +54,11 @@ public final class MainActivity extends Activity {
     private TextView pointLabel;
     private CheckBox linkBounds;
     private CheckBox resizeOnlyCheck;
+    private CheckBox uniformResizeCheck;
     private boolean rotated;
     private boolean expandedCanvas;
     private boolean resizeHandlesOnly;
+    private boolean uniformResize;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -67,6 +70,7 @@ public final class MainActivity extends Activity {
         String saved = getPreferences(MODE_PRIVATE).getString("draft", null);
         expandedCanvas = getPreferences(MODE_PRIVATE).getBoolean("expandedCanvas", false);
         resizeHandlesOnly = getPreferences(MODE_PRIVATE).getBoolean("resizeHandlesOnly", false);
+        uniformResize = getPreferences(MODE_PRIVATE).getBoolean("uniformResize", false);
         if (saved != null) {
             try { config = ShapeConfig.fromJson(saved); }
             catch (JSONException ignored) { /* Start fresh if the draft is damaged. */ }
@@ -132,6 +136,7 @@ public final class MainActivity extends Activity {
     private void showEditor() {
         xField = null;
         yField = null;
+        curveField = null;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(247, 249, 252));
@@ -145,6 +150,7 @@ public final class MainActivity extends Activity {
         header.addView(button("Reset", this::confirmReset));
         preview = new ShapePreview(this, config, this::updateRadius);
         preview.setResizeHandlesOnly(resizeHandlesOnly);
+        preview.setUniformResize(uniformResize);
         preview.setShapeListener(this::updateShape);
         preview.setEditApproximation(editApproximation);
         attachPathListener(preview);
@@ -180,6 +186,7 @@ public final class MainActivity extends Activity {
         scroll.addView(form);
         status = text("", 14);
         form.addView(status);
+        LinearLayout canvasModes = row(form);
         resizeOnlyCheck = new CheckBox(this);
         resizeOnlyCheck.setText("Show resize dots only");
         resizeOnlyCheck.setChecked(resizeHandlesOnly);
@@ -188,7 +195,16 @@ public final class MainActivity extends Activity {
             getPreferences(MODE_PRIVATE).edit().putBoolean("resizeHandlesOnly", checked).apply();
             preview.setResizeHandlesOnly(checked);
         });
-        form.addView(resizeOnlyCheck);
+        addHalf(canvasModes, resizeOnlyCheck);
+        uniformResizeCheck = new CheckBox(this);
+        uniformResizeCheck.setText("Uniform resize");
+        uniformResizeCheck.setChecked(uniformResize);
+        uniformResizeCheck.setOnCheckedChangeListener((v, checked) -> {
+            uniformResize = checked;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("uniformResize", checked).apply();
+            preview.setUniformResize(checked);
+        });
+        addHalf(canvasModes, uniformResizeCheck);
         heading(form, "Target display");
         LinearLayout dimensions = row(form);
         field(dimensions, "Native width (px)", Integer.toString(config.width),
@@ -243,7 +259,7 @@ public final class MainActivity extends Activity {
                     s -> { config.shapeWidth = integer(s); updatePreset(); });
             heightField = field(size, "Height (px)", Integer.toString(config.shapeHeight),
                     s -> { config.shapeHeight = integer(s); updatePreset(); });
-            field(row(form), "Corner curve (px)", Integer.toString(config.curve),
+            curveField = field(row(form), "Corner curve (px)", Integer.toString(config.curve),
                     s -> { config.curve = integer(s); updatePreset(); });
         }
         pathField = field(row(form), "Cutout path (editing switches to custom mode)", config.cutout,
@@ -351,9 +367,10 @@ public final class MainActivity extends Activity {
         else bottomField.setText(pixels + "px");
     }
 
-    private void updateShape(int width, int height, int x, int y) {
+    private void updateShape(int width, int height, int x, int y, int curve) {
         widthField.setText(Integer.toString(width));
         heightField.setText(Integer.toString(height));
+        curveField.setText(Integer.toString(curve));
         config.offsetX = x;
         config.offsetY = y;
         updatePreset();
@@ -568,9 +585,11 @@ public final class MainActivity extends Activity {
                     rotated = false;
                     expandedCanvas = false;
                     resizeHandlesOnly = false;
+                    uniformResize = false;
                     editApproximation = false;
                     getPreferences(MODE_PRIVATE).edit().putBoolean("expandedCanvas", false)
-                            .putBoolean("resizeHandlesOnly", false).apply();
+                            .putBoolean("resizeHandlesOnly", false)
+                            .putBoolean("uniformResize", false).apply();
                     showEditor();
                 }).show();
     }
@@ -599,10 +618,11 @@ public final class MainActivity extends Activity {
         canvas.setFullScreen(true);
         canvas.setCalibration(true);
         canvas.setResizeHandlesOnly(resizeHandlesOnly);
+        canvas.setUniformResize(uniformResize);
         canvas.setRotated(rotated);
         canvas.setEditApproximation(editApproximation);
-        canvas.setShapeListener((width, height, x, y) -> {
-            updateShape(width, height, x, y);
+        canvas.setShapeListener((width, height, x, y, curve) -> {
+            updateShape(width, height, x, y, curve);
             canvas.invalidate();
         });
         attachPathListener(canvas);
@@ -653,6 +673,15 @@ public final class MainActivity extends Activity {
             canvas.setResizeHandlesOnly(checked);
         });
         addHalf(options, resizeOnly);
+        CheckBox aspectLock = new CheckBox(this);
+        aspectLock.setText("Uniform resize");
+        aspectLock.setTextColor(Color.WHITE);
+        aspectLock.setChecked(uniformResize);
+        aspectLock.setOnCheckedChangeListener((v, checked) -> {
+            uniformResizeCheck.setChecked(checked);
+            canvas.setUniformResize(checked);
+        });
+        addHalf(options, aspectLock);
         dialog.setContentView(frame);
         openImmersive(dialog);
     }

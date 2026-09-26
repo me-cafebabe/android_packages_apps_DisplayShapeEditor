@@ -21,6 +21,10 @@ configuration and needs no root access.
    **Show resize dots only** hides the grid, corner-radius dots, move dot, path
    points, and bounding-box outline while keeping the preset size dots and
    square resize grip visible. It also works in **Calibrate** mode.
+   **Uniform resize** locks the starting aspect ratio when dragging the blue
+   square grip or a preset's size dot; preset curvature scales with it. Turn
+   it off for independent width and height adjustments. Both modes are also
+   available in **Calibrate**.
    The position inputs use the selected shape's center X (from the display's
    left edge) and top Y (from its top edge), in native pixels. Editing the SVG
    text switches to custom mode; there is no automatic conversion back to a

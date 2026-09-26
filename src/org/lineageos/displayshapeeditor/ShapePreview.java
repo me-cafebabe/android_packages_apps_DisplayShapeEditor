@@ -14,7 +14,9 @@ import java.util.List;
 
 final class ShapePreview extends View {
     interface CornerListener { void onRadius(boolean top, int pixels); }
-    interface ShapeListener { void onShape(int width, int height, int offsetX, int offsetY); }
+    interface ShapeListener {
+        void onShape(int width, int height, int offsetX, int offsetY, int curve);
+    }
     interface PathListener {
         void onPointSelected(int index, float x, float y);
         void onPathChanged(boolean approximation, String path);
@@ -33,6 +35,7 @@ final class ShapePreview extends View {
     private boolean fullScreen;
     private boolean calibration;
     private boolean resizeHandlesOnly;
+    private boolean uniformResize;
     private boolean approximationVisible = true;
     private float scale;
     private int dragCorner = -1;
@@ -44,7 +47,7 @@ final class ShapePreview extends View {
     private String cutoutBeforeResize;
     private final RectF originalCutoutBounds = new RectF();
     private float resizeDownX, resizeDownY;
-    private int originalWidth, originalHeight, originalOffsetX, originalOffsetY;
+    private int originalWidth, originalHeight, originalOffsetX, originalOffsetY, originalCurve;
     private float downX, downY;
     private int initialX, initialY;
     private boolean panning;
@@ -69,6 +72,7 @@ final class ShapePreview extends View {
         selectedPoint = -1;
         invalidate();
     }
+    void setUniformResize(boolean value) { uniformResize = value; invalidate(); }
     void setApproximationVisible(boolean value) { approximationVisible = value; invalidate(); }
     void setShapeListener(ShapeListener value) { shapeListener = value; invalidate(); }
     void setCornerListener(CornerListener value) { listener = value; }
@@ -210,6 +214,7 @@ final class ShapePreview extends View {
                     canvas.drawLine(cutoutBounds.right, cutoutBounds.bottom, hx, hy, paint);
                 }
                 paint.setStyle(Paint.Style.FILL);
+                if (uniformResize) paint.setColor(Color.rgb(27, 104, 210));
                 float grip = 9 / scale;
                 canvas.drawRect(hx - grip, hy - grip, hx + grip, hy + grip, paint);
             }
@@ -320,6 +325,7 @@ final class ShapePreview extends View {
                 originalHeight = config.shapeHeight;
                 originalOffsetX = config.offsetX;
                 originalOffsetY = config.offsetY;
+                originalCurve = config.curve;
                 return true;
             }
             boolean inside = insideCutout(x, y);
@@ -374,6 +380,9 @@ final class ShapePreview extends View {
                     downY = y;
                     initialX = config.offsetX;
                     initialY = config.offsetY;
+                    originalWidth = config.shapeWidth;
+                    originalHeight = config.shapeHeight;
+                    originalCurve = config.curve;
                     return true;
                 }
             }
@@ -408,12 +417,29 @@ final class ShapePreview extends View {
         if (event.getActionMasked() == MotionEvent.ACTION_MOVE && resizingCutout) {
             float newWidth = Math.max(1, originalCutoutBounds.width() + x - resizeDownX);
             float newHeight = Math.max(1, originalCutoutBounds.height() + y - resizeDownY);
+            if (uniformResize) {
+                float oldWidth = originalCutoutBounds.width();
+                float oldHeight = originalCutoutBounds.height();
+                float relativeX = (x - resizeDownX) / oldWidth;
+                float relativeY = (y - resizeDownY) / oldHeight;
+                float factor = 1 + (Math.abs(relativeX) >= Math.abs(relativeY)
+                        ? relativeX : relativeY);
+                factor = Math.max(Math.max(1 / oldWidth, 1 / oldHeight), factor);
+                newWidth = oldWidth * factor;
+                newHeight = oldHeight * factor;
+            }
             if (!editApproximation && config.preset != 0 && shapeListener != null) {
-                int width = Math.max(1, originalWidth + Math.round(x - resizeDownX));
-                int height = Math.max(1, originalHeight + Math.round(y - resizeDownY));
+                int width = uniformResize ? Math.max(1, Math.round(originalWidth
+                        * newWidth / originalCutoutBounds.width()))
+                        : Math.max(1, originalWidth + Math.round(x - resizeDownX));
+                int height = uniformResize ? Math.max(1, Math.round(originalHeight
+                        * newHeight / originalCutoutBounds.height()))
+                        : Math.max(1, originalHeight + Math.round(y - resizeDownY));
                 int offsetX = config.preset == 4 ? originalOffsetX
                         : originalOffsetX - originalWidth / 2 + width / 2;
-                shapeListener.onShape(width, height, offsetX, originalOffsetY);
+                int curve = uniformResize ? Math.round(originalCurve * width / (float) originalWidth)
+                        : config.curve;
+                shapeListener.onShape(width, height, offsetX, originalOffsetY, curve);
             } else if (pathListener != null) {
                 RectF resized = new RectF(originalCutoutBounds.left, originalCutoutBounds.top,
                         originalCutoutBounds.left + newWidth, originalCutoutBounds.top + newHeight);
@@ -432,12 +458,21 @@ final class ShapePreview extends View {
                 offsetX = initialX + Math.round(x - downX);
                 offsetY = initialY + Math.round(y - downY);
             } else if (dragShape == 1) {
-                width = Math.max(1, Math.round(config.preset == 4
-                        ? x - config.offsetX : (x - shapeCenterX()) * 2));
+                width = uniformResize ? Math.max(1, originalWidth + Math.round(
+                        (x - downX) * (config.preset == 4 ? 1 : 2)))
+                        : Math.max(1, Math.round(config.preset == 4
+                                ? x - config.offsetX : (x - shapeCenterX()) * 2));
+                if (uniformResize) height = Math.max(1,
+                        Math.round(originalHeight * width / (float) originalWidth));
             } else {
-                height = Math.max(1, Math.round(y - config.offsetY));
+                height = uniformResize ? Math.max(1, originalHeight + Math.round(y - downY))
+                        : Math.max(1, Math.round(y - config.offsetY));
+                if (uniformResize) width = Math.max(1,
+                        Math.round(originalWidth * height / (float) originalHeight));
             }
-            shapeListener.onShape(width, height, offsetX, offsetY);
+            int curve = uniformResize && dragShape != 0
+                    ? Math.round(originalCurve * width / (float) originalWidth) : config.curve;
+            shapeListener.onShape(width, height, offsetX, offsetY, curve);
             return true;
         }
         if (event.getActionMasked() == MotionEvent.ACTION_MOVE && dragCorner != -1) {
