@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.RectF;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
@@ -47,6 +48,7 @@ public final class MainActivity extends Activity {
     private EditText xField;
     private EditText yField;
     private boolean updatingPath;
+    private boolean updatingPosition;
     private boolean editApproximation;
     private TextView pointLabel;
     private CheckBox linkBounds;
@@ -126,6 +128,8 @@ public final class MainActivity extends Activity {
     }
 
     private void showEditor() {
+        xField = null;
+        yField = null;
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(247, 249, 252));
@@ -176,12 +180,12 @@ public final class MainActivity extends Activity {
         heading(form, "Target display");
         LinearLayout dimensions = row(form);
         field(dimensions, "Native width (px)", Integer.toString(config.width),
-                s -> config.width = integer(s));
+                s -> { config.width = integer(s); refreshPositionFields(); });
         field(dimensions, "Native height (px)", Integer.toString(config.height),
-                s -> config.height = integer(s));
+                s -> { config.height = integer(s); refreshPositionFields(); });
         LinearLayout density = row(form);
         field(density, "Density (dpi)", Integer.toString(config.densityDpi),
-                s -> config.densityDpi = integer(s));
+                s -> { config.densityDpi = integer(s); refreshPositionFields(); });
         addHalf(density, button("This device", () -> {
             config.width = getWindowManager().getDefaultDisplay().getMode().getPhysicalWidth();
             config.height = getWindowManager().getDefaultDisplay().getMode().getPhysicalHeight();
@@ -227,11 +231,6 @@ public final class MainActivity extends Activity {
                     s -> { config.shapeWidth = integer(s); updatePreset(); });
             heightField = field(size, "Height (px)", Integer.toString(config.shapeHeight),
                     s -> { config.shapeHeight = integer(s); updatePreset(); });
-            LinearLayout position = row(form);
-            xField = field(position, "X offset (px)", Integer.toString(config.offsetX),
-                    s -> { config.offsetX = integer(s); updatePreset(); });
-            yField = field(position, "Y offset (px)", Integer.toString(config.offsetY),
-                    s -> { config.offsetY = integer(s); updatePreset(); });
             field(row(form), "Corner curve (px)", Integer.toString(config.curve),
                     s -> { config.curve = integer(s); updatePreset(); });
         }
@@ -242,13 +241,32 @@ public final class MainActivity extends Activity {
                         config.preset = 0;
                         preview.invalidate();
                     }
+                    refreshPositionFields();
                 });
         pathField.setSingleLine(false);
         pathField.setMinLines(2);
         approximationField = field(row(form), "Bounding approximation (optional)",
-                config.approximation, s -> config.approximation = s);
+                config.approximation, s -> {
+                    config.approximation = s;
+                    refreshPositionFields();
+                });
         approximationField.setSingleLine(false);
         approximationField.setMinLines(2);
+        form.addView(text("Position of selected path (native display pixels)", 13));
+        LinearLayout position = row(form);
+        xField = field(position, "Center X from left", "", s -> movePathTo(s, true));
+        yField = field(position, "Top Y from top", "", s -> movePathTo(s, false));
+        int numberInput = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL
+                | InputType.TYPE_NUMBER_FLAG_SIGNED;
+        xField.setInputType(numberInput);
+        yField.setInputType(numberInput);
+        xField.setOnFocusChangeListener((v, focused) -> {
+            if (!focused) refreshPositionFields();
+        });
+        yField.setOnFocusChangeListener((v, focused) -> {
+            if (!focused) refreshPositionFields();
+        });
+        refreshPositionFields();
         LinearLayout pathModes = row(form);
         addHalf(pathModes, button("Edit visible path", () -> {
             editApproximation = false;
@@ -258,6 +276,7 @@ public final class MainActivity extends Activity {
             } else {
                 preview.setEditApproximation(false);
                 pointLabel.setText("Tap a path point to edit it");
+                refreshPositionFields();
             }
         }));
         addHalf(pathModes, button("Edit bounds", () -> {
@@ -267,6 +286,7 @@ public final class MainActivity extends Activity {
             editApproximation = true;
             preview.setEditApproximation(true);
             pointLabel.setText("Tap a bounding path point to edit it");
+            refreshPositionFields();
             changed();
         }));
         linkBounds = new CheckBox(this);
@@ -324,8 +344,68 @@ public final class MainActivity extends Activity {
     private void updateShape(int width, int height, int x, int y) {
         widthField.setText(Integer.toString(width));
         heightField.setText(Integer.toString(height));
-        xField.setText(Integer.toString(x));
-        yField.setText(Integer.toString(y));
+        config.offsetX = x;
+        config.offsetY = y;
+        updatePreset();
+    }
+
+    private RectF selectedPathBounds() {
+        String path = editApproximation ? config.approximation : config.cutout;
+        if (path.trim().isEmpty()) return null;
+        try {
+            RectF bounds = new RectF();
+            CutoutPath.parse(path, config.width, config.height, config.densityDpi)
+                    .computeBounds(bounds, true);
+            return bounds;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private void refreshPositionFields() {
+        if (xField == null || yField == null) return;
+        RectF bounds = selectedPathBounds();
+        updatingPosition = true;
+        xField.setEnabled(bounds != null);
+        yField.setEnabled(bounds != null);
+        if (!xField.hasFocus()) xField.setText(bounds == null ? "" :
+                String.format(java.util.Locale.ROOT, "%.2f", bounds.centerX()));
+        if (!yField.hasFocus()) yField.setText(bounds == null ? "" :
+                String.format(java.util.Locale.ROOT, "%.2f", bounds.top));
+        updatingPosition = false;
+    }
+
+    private void movePathTo(String text, boolean horizontal) {
+        if (updatingPosition) return;
+        RectF bounds = selectedPathBounds();
+        if (bounds == null) return;
+        float target;
+        try { target = Float.parseFloat(text); }
+        catch (NumberFormatException e) { return; }
+        if (!Float.isFinite(target)) return;
+        float dx = horizontal ? target - bounds.centerX() : 0;
+        float dy = horizontal ? 0 : target - bounds.top;
+        if (dx == 0 && dy == 0) return;
+        if (config.preset != 0 && !editApproximation) {
+            config.offsetX += Math.round(dx);
+            config.offsetY += Math.round(dy);
+            updatePreset();
+            return;
+        }
+        String previous = editApproximation ? config.approximation : config.cutout;
+        try {
+            String moved = PathEditor.translate(previous, config.width, config.height,
+                    config.densityDpi, dx, dy);
+            if (editApproximation) approximationField.setText(moved);
+            else {
+                syncApproximation(previous, moved, dx, dy);
+                updatingPath = true;
+                pathField.setText(moved);
+                updatingPath = false;
+            }
+        } catch (IllegalArgumentException e) {
+            message(e.getMessage());
+        }
     }
 
     private void attachPathListener(ShapePreview source) {
@@ -359,6 +439,7 @@ public final class MainActivity extends Activity {
                 }
                 changed();
                 source.invalidate();
+                refreshPositionFields();
             }
         });
     }
@@ -505,6 +586,7 @@ public final class MainActivity extends Activity {
             editApproximation = false;
             preview.setEditApproximation(false);
             canvas.setEditApproximation(false);
+            refreshPositionFields();
         }));
         addHalf(modes, button("Bounds", () -> {
             if (config.cutout.isEmpty()) { message("Create a cutout first"); return; }
@@ -513,6 +595,7 @@ public final class MainActivity extends Activity {
             editApproximation = true;
             preview.setEditApproximation(true);
             canvas.setEditApproximation(true);
+            refreshPositionFields();
             changed();
         }));
         LinearLayout controls = row(tools);
@@ -581,6 +664,7 @@ public final class MainActivity extends Activity {
         lastPresetX = config.offsetX;
         lastPresetY = config.offsetY;
         preview.invalidate();
+        refreshPositionFields();
     }
 
     private void changed() {
