@@ -18,6 +18,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -48,6 +49,7 @@ public final class MainActivity extends Activity {
     private boolean updatingPath;
     private boolean editApproximation;
     private TextView pointLabel;
+    private CheckBox linkBounds;
     private int lastPresetX, lastPresetY;
     private boolean rotated;
     private boolean expandedCanvas;
@@ -133,48 +135,10 @@ public final class MainActivity extends Activity {
         title.setTextColor(Color.rgb(0, 93, 120));
         title.setPadding(dp(18), dp(14), dp(18), dp(10));
         root.addView(title);
-        preview = new ShapePreview(this, config, (top, pixels) -> {
-            if (top) topField.setText(pixels + "px");
-            else bottomField.setText(pixels + "px");
-        });
-        preview.setShapeListener((width, height, x, y) -> {
-            widthField.setText(Integer.toString(width));
-            heightField.setText(Integer.toString(height));
-            xField.setText(Integer.toString(x));
-            yField.setText(Integer.toString(y));
-        });
+        preview = new ShapePreview(this, config, this::updateRadius);
+        preview.setShapeListener(this::updateShape);
         preview.setEditApproximation(editApproximation);
-        preview.setPathListener(new ShapePreview.PathListener() {
-            @Override public void onPointSelected(int index, float x, float y) {
-                pointLabel.setText(String.format(java.util.Locale.ROOT,
-                        "Point %d: %.1f, %.1f px (tap coordinates for exact values)",
-                        index + 1, x, y));
-            }
-
-            @Override public void onPathChanged(boolean bounds, String path) {
-                if (bounds) {
-                    approximationField.setText(path);
-                } else {
-                    String old = config.cutout;
-                    if (config.linkApproximation && !config.approximation.isEmpty()) {
-                        int selected = preview.getSelectedPoint();
-                        try {
-                            List<PathEditor.Point> before = PathEditor.points(old, config.width,
-                                    config.height, config.densityDpi);
-                            List<PathEditor.Point> after = PathEditor.points(path, config.width,
-                                    config.height, config.densityDpi);
-                            syncApproximation(old, path,
-                                    after.get(selected).x - before.get(selected).x,
-                                    after.get(selected).y - before.get(selected).y);
-                        } catch (RuntimeException ignored) { /* Keep an independently edited bound. */ }
-                    }
-                    updatingPath = true;
-                    pathField.setText(path);
-                    updatingPath = false;
-                }
-                changed();
-            }
-        });
+        attachPathListener(preview);
         root.addView(preview, new LinearLayout.LayoutParams(-1, canvasHeight()));
         LinearLayout actions = row(root);
         addHalf(actions, button("Rotate", () -> {
@@ -197,7 +161,7 @@ public final class MainActivity extends Activity {
         LinearLayout zoomControls = row(root);
         addHalf(zoomControls, button("1x", () -> preview.setZoom(1)));
         addHalf(zoomControls, button("2x", () -> preview.setZoom(2)));
-        addHalf(zoomControls, button("4x", () -> preview.setZoom(4)));
+        addHalf(zoomControls, button("Calibrate", this::showCalibration));
 
         ScrollView scroll = new ScrollView(this);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -248,6 +212,7 @@ public final class MainActivity extends Activity {
         addHalf(other, button("Hole punch", () -> setPreset(3)));
         addHalf(other, button("Left notch", () -> setPreset(4)));
         addHalf(row(form), button("No cutout", () -> {
+            editApproximation = false;
             config.preset = 0;
             config.cutout = "";
             config.approximation = "";
@@ -296,13 +261,13 @@ public final class MainActivity extends Activity {
         addHalf(pathModes, button("Edit bounds", () -> {
             if (config.cutout.isEmpty()) { message("Create a cutout first"); return; }
             if (config.approximation.isEmpty()) approximationField.setText(config.cutout);
-            config.linkApproximation = false;
+            linkBounds.setChecked(false);
             editApproximation = true;
             preview.setEditApproximation(true);
             pointLabel.setText("Tap a bounding path point to edit it");
             changed();
         }));
-        CheckBox linkBounds = new CheckBox(this);
+        linkBounds = new CheckBox(this);
         linkBounds.setText("Move approximation with visible path");
         linkBounds.setChecked(config.linkApproximation);
         linkBounds.setOnCheckedChangeListener((v, checked) -> {
@@ -347,6 +312,53 @@ public final class MainActivity extends Activity {
         lastPresetX = config.offsetX;
         lastPresetY = config.offsetY;
         changed();
+    }
+
+    private void updateRadius(boolean top, int pixels) {
+        if (top) topField.setText(pixels + "px");
+        else bottomField.setText(pixels + "px");
+    }
+
+    private void updateShape(int width, int height, int x, int y) {
+        widthField.setText(Integer.toString(width));
+        heightField.setText(Integer.toString(height));
+        xField.setText(Integer.toString(x));
+        yField.setText(Integer.toString(y));
+    }
+
+    private void attachPathListener(ShapePreview source) {
+        source.setPathListener(new ShapePreview.PathListener() {
+            @Override public void onPointSelected(int index, float x, float y) {
+                pointLabel.setText(String.format(java.util.Locale.ROOT,
+                        "Point %d: %.1f, %.1f px (tap coordinates for exact values)",
+                        index + 1, x, y));
+            }
+
+            @Override public void onPathChanged(boolean bounds, String path) {
+                if (bounds) {
+                    approximationField.setText(path);
+                } else {
+                    String old = config.cutout;
+                    if (config.linkApproximation && !config.approximation.isEmpty()) {
+                        int selected = source.getSelectedPoint();
+                        try {
+                            List<PathEditor.Point> before = PathEditor.points(old, config.width,
+                                    config.height, config.densityDpi);
+                            List<PathEditor.Point> after = PathEditor.points(path, config.width,
+                                    config.height, config.densityDpi);
+                            syncApproximation(old, path,
+                                    after.get(selected).x - before.get(selected).x,
+                                    after.get(selected).y - before.get(selected).y);
+                        } catch (RuntimeException ignored) { /* Keep an independently edited bound. */ }
+                    }
+                    updatingPath = true;
+                    pathField.setText(path);
+                    updatingPath = false;
+                }
+                changed();
+                source.invalidate();
+            }
+        });
     }
 
     private void nudge(int dx, int dy) {
@@ -438,6 +450,66 @@ public final class MainActivity extends Activity {
             return true;
         });
         dialog.setContentView(large);
+        openImmersive(dialog);
+    }
+
+    private void showCalibration() {
+        Dialog dialog = new Dialog(this, android.R.style.Theme_Material_Light_NoActionBar);
+        ShapePreview canvas = new ShapePreview(this, config, null);
+        canvas.setCornerListener((top, pixels) -> {
+            updateRadius(top, pixels);
+            // The calibration canvas is separate from the editor's live preview.
+            canvas.invalidate();
+        });
+        canvas.setFullScreen(true);
+        canvas.setCalibration(true);
+        canvas.setRotated(rotated);
+        canvas.setEditApproximation(editApproximation);
+        canvas.setShapeListener((width, height, x, y) -> {
+            updateShape(width, height, x, y);
+            canvas.invalidate();
+        });
+        attachPathListener(canvas);
+
+        FrameLayout frame = new FrameLayout(this);
+        frame.addView(canvas, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout tools = new LinearLayout(this);
+        tools.setOrientation(LinearLayout.VERTICAL);
+        tools.setBackgroundColor(Color.argb(220, 17, 25, 39));
+        FrameLayout.LayoutParams toolParams = new FrameLayout.LayoutParams(-1, -2,
+                android.view.Gravity.BOTTOM);
+        frame.addView(tools, toolParams);
+        LinearLayout modes = row(tools);
+        addHalf(modes, button("Exit", dialog::dismiss));
+        addHalf(modes, button("Visible", () -> {
+            editApproximation = false;
+            preview.setEditApproximation(false);
+            canvas.setEditApproximation(false);
+        }));
+        addHalf(modes, button("Bounds", () -> {
+            if (config.cutout.isEmpty()) { message("Create a cutout first"); return; }
+            if (config.approximation.isEmpty()) approximationField.setText(config.cutout);
+            linkBounds.setChecked(false);
+            editApproximation = true;
+            preview.setEditApproximation(true);
+            canvas.setEditApproximation(true);
+            changed();
+        }));
+        LinearLayout controls = row(tools);
+        addHalf(controls, button("1x", () -> canvas.setZoom(1)));
+        addHalf(controls, button("2x", () -> canvas.setZoom(2)));
+        Button guides = button("Hide guides", () -> {});
+        addHalf(controls, guides);
+        guides.setOnClickListener(v -> {
+            boolean show = guides.getText().toString().equals("Show guides");
+            canvas.setCalibration(show);
+            guides.setText(show ? "Hide guides" : "Show guides");
+        });
+        dialog.setContentView(frame);
+        openImmersive(dialog);
+    }
+
+    private void openImmersive(Dialog dialog) {
         Window window = dialog.getWindow();
         if (window != null) {
             window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -544,6 +616,7 @@ public final class MainActivity extends Activity {
                     if (in == null) throw new IllegalArgumentException("Cannot open file");
                     config = OverlayXml.read(in, config);
                 }
+                editApproximation = false;
                 showEditor();
                 message("Imported overlay values");
             } else if (request == SAVE_XML) {

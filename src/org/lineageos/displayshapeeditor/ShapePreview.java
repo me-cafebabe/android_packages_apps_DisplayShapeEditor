@@ -30,6 +30,7 @@ final class ShapePreview extends View {
     private boolean draggingPoint;
     private boolean rotated;
     private boolean fullScreen;
+    private boolean calibration;
     private boolean approximationVisible = true;
     private float scale;
     private int dragCorner = -1;
@@ -52,8 +53,10 @@ final class ShapePreview extends View {
     void setConfig(ShapeConfig value) { config = value; invalidate(); }
     void setRotated(boolean value) { rotated = value; resetViewport(); }
     void setFullScreen(boolean value) { fullScreen = value; invalidate(); }
+    void setCalibration(boolean value) { calibration = value; invalidate(); }
     void setApproximationVisible(boolean value) { approximationVisible = value; invalidate(); }
     void setShapeListener(ShapeListener value) { shapeListener = value; invalidate(); }
+    void setCornerListener(CornerListener value) { listener = value; }
     void setPathListener(PathListener value) { pathListener = value; invalidate(); }
     void setEditApproximation(boolean value) {
         editApproximation = value;
@@ -95,7 +98,7 @@ final class ShapePreview extends View {
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(Color.rgb(236, 243, 250));
         canvas.drawRect(0, 0, width, height, paint);
-        if (!fullScreen) {
+        if (!fullScreen || calibration) {
             paint.setColor(Color.rgb(194, 210, 225));
             paint.setStrokeWidth(Math.max(1, 1 / scale));
             for (int x = 0; x < width; x += 100) canvas.drawLine(x, 0, x, height, paint);
@@ -141,7 +144,7 @@ final class ShapePreview extends View {
         } catch (IllegalArgumentException ignored) {
             // The editor reports the error; preserve the rest of the preview while typing.
         }
-        if (!fullScreen) {
+        if (!fullScreen || calibration) {
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.rgb(0, 150, 185));
             float handle = Math.max(7, 9 / scale);
@@ -197,7 +200,7 @@ final class ShapePreview extends View {
     }
 
     @Override public boolean onTouchEvent(MotionEvent event) {
-        if (scale <= 0 || fullScreen) return false;
+        if (scale <= 0 || fullScreen && !calibration) return false;
         if (event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() == 2) {
             pinchDistance = (float) Math.hypot(event.getX(0) - event.getX(1),
                     event.getY(0) - event.getY(1));

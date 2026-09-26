@@ -11,22 +11,34 @@ configuration and needs no root access.
    preparing an overlay for a different device.
 2. Drag either cyan corner handle to adjust the top or bottom radius, or enter
    values with `px`/`dp` units. A zero top/bottom radius inherits the default.
-3. Pick a cutout preset and edit its SVG path to match the physical panel. Paths
-   start at the top center by default. `@left`, `@right`, `@bottom`, `@cutout`,
-   and a trailing `@dp` are supported. The supported path commands are `M`,
-   `L`, `H`, `V`, `Q`, `C`, `Z` and their relative lowercase equivalents.
-   Other SVG commands are rejected rather than exported with a misleading
-   preview. For complex paths, create an approximation path separately; its
-   outline is shown in cyan when enabled.
-4. Tap **Larger** to expand the in-editor canvas while keeping the fields
+3. Choose a notch, pill, or hole-punch preset. Drag its orange handles to move
+   it or adjust width and height. The numeric fields control position, size,
+   and curvature in native pixels. Editing the SVG text switches to custom
+   mode; there is no automatic conversion from arbitrary paths back to a
+   preset. In custom mode, tap an anchor or curve-control point and drag it,
+   nudge it by one pixel, or enter exact coordinates. Pinch to zoom and drag
+   empty canvas to pan; the `1x` and `2x` buttons reset the view.
+4. Use **Edit bounds** to create and separately edit the cutout's bounding
+   approximation. Its outline is cyan. If the approximation is empty, the
+   framework uses the visible path; enabling **Move approximation with visible
+   path** translates a custom approximation when the cutout is moved, but
+   resizing a preset does not automatically resize a refined approximation.
+   Check both paths after changing size.
+5. Paths start at the top center by default. `@left`, `@right`, `@bottom`,
+   `@cutout`, and a trailing `@dp` are supported. The supported path commands
+   are `M`, `L`, `H`, `V`, `Q`, `C`, `Z` and their relative lowercase equivalents.
+   Point edits normalize the path to absolute commands. Other SVG commands are
+   rejected rather than exported with a misleading preview.
+6. Tap **Larger** to expand the in-editor canvas while keeping the fields
    available below it; tap **Smaller** to restore its size. This choice is
    remembered between launches. Rotate the preview or open **Full screen**
    to see the drawing edge-to-edge without guides or corner handles. Tap
    anywhere or press Back to return to the editor. If the target display's
-   aspect ratio differs from this device,
-   unused space remains around the drawing. The display drawing is an
-   approximation, not the framework's actual cutout/insets calculation.
-5. Use **View XML** to inspect the output. **Export XML** saves
+   aspect ratio differs from this device, unused space remains around the
+   drawing. **Calibrate** opens an immersive editing canvas with an explicit
+   Exit button and togglable guides. Its edits update the same draft. The
+   drawing is an approximation, not the framework's actual insets calculation.
+7. Use **View XML** to inspect the output. **Export XML** saves
    `display_shape.xml` through Android's document picker. The editable draft is
    also saved locally between launches. **Import XML** accepts a values XML
    file and reads supported resources; dimensions, density and unknown resources
