@@ -18,6 +18,9 @@ configuration and needs no root access.
    This works for presets and custom or imported paths (including curves); zoom
    in when working with a very small cutout. The width, height, and curvature
    fields control the preset.
+   **Show resize dots only** hides the grid, corner-radius dots, move dot, path
+   points, and bounding-box outline while keeping the preset size dots and
+   square resize grip visible. It also works in **Calibrate** mode.
    The position inputs use the selected shape's center X (from the display's
    left edge) and top Y (from its top edge), in native pixels. Editing the SVG
    text switches to custom mode; there is no automatic conversion back to a

@@ -32,6 +32,7 @@ final class ShapePreview extends View {
     private boolean rotated;
     private boolean fullScreen;
     private boolean calibration;
+    private boolean resizeHandlesOnly;
     private boolean approximationVisible = true;
     private float scale;
     private int dragCorner = -1;
@@ -63,6 +64,11 @@ final class ShapePreview extends View {
     void setRotated(boolean value) { rotated = value; resetViewport(); }
     void setFullScreen(boolean value) { fullScreen = value; invalidate(); }
     void setCalibration(boolean value) { calibration = value; invalidate(); }
+    void setResizeHandlesOnly(boolean value) {
+        resizeHandlesOnly = value;
+        selectedPoint = -1;
+        invalidate();
+    }
     void setApproximationVisible(boolean value) { approximationVisible = value; invalidate(); }
     void setShapeListener(ShapeListener value) { shapeListener = value; invalidate(); }
     void setCornerListener(CornerListener value) { listener = value; }
@@ -107,7 +113,7 @@ final class ShapePreview extends View {
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(Color.rgb(236, 243, 250));
         canvas.drawRect(0, 0, width, height, paint);
-        if (!fullScreen || calibration) {
+        if ((!fullScreen || calibration) && !resizeHandlesOnly) {
             paint.setColor(Color.rgb(194, 210, 225));
             paint.setStrokeWidth(Math.max(1, 1 / scale));
             for (int x = 0; x < width; x += 100) canvas.drawLine(x, 0, x, height, paint);
@@ -155,19 +161,21 @@ final class ShapePreview extends View {
         }
         if (!fullScreen || calibration) {
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.rgb(0, 150, 185));
             float handle = Math.max(7, 9 / scale);
-            canvas.drawCircle(upper, upper, handle, paint);
-            canvas.drawCircle(lower, height - lower, handle, paint);
+            if (!resizeHandlesOnly) {
+                paint.setColor(Color.rgb(0, 150, 185));
+                canvas.drawCircle(upper, upper, handle, paint);
+                canvas.drawCircle(lower, height - lower, handle, paint);
+            }
             if (config.preset != 0 && shapeListener != null && !editApproximation) {
                 float cx = shapeCenterX();
                 float cy = config.offsetY + config.shapeHeight / 2f;
                 paint.setColor(Color.rgb(212, 79, 35));
-                canvas.drawCircle(cx, cy, handle, paint);
+                if (!resizeHandlesOnly) canvas.drawCircle(cx, cy, handle, paint);
                 canvas.drawCircle(cx + config.shapeWidth / 2f, cy, handle, paint);
                 canvas.drawCircle(cx, config.offsetY + config.shapeHeight, handle, paint);
             }
-            if (pathListener != null && !editableSpec().isEmpty()) {
+            if (!resizeHandlesOnly && pathListener != null && !editableSpec().isEmpty()) {
                 try {
                     List<PathEditor.Point> points = PathEditor.points(editableSpec(), width, height,
                             config.densityDpi);
@@ -194,11 +202,13 @@ final class ShapePreview extends View {
             if (cutoutBounds != null) {
                 float hx = resizeHandleX(cutoutBounds);
                 float hy = resizeHandleY(cutoutBounds);
-                paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(1, 2 / scale));
                 paint.setColor(Color.rgb(212, 79, 35));
-                canvas.drawRect(cutoutBounds, paint);
-                canvas.drawLine(cutoutBounds.right, cutoutBounds.bottom, hx, hy, paint);
+                if (!resizeHandlesOnly) {
+                    paint.setStyle(Paint.Style.STROKE);
+                    paint.setStrokeWidth(Math.max(1, 2 / scale));
+                    canvas.drawRect(cutoutBounds, paint);
+                    canvas.drawLine(cutoutBounds.right, cutoutBounds.bottom, hx, hy, paint);
+                }
                 paint.setStyle(Paint.Style.FILL);
                 float grip = 9 / scale;
                 canvas.drawRect(hx - grip, hy - grip, hx + grip, hy + grip, paint);
@@ -313,7 +323,7 @@ final class ShapePreview extends View {
                 return true;
             }
             boolean inside = insideCutout(x, y);
-            if (pathListener != null && !editableSpec().isEmpty()) {
+            if (!resizeHandlesOnly && pathListener != null && !editableSpec().isEmpty()) {
                 try {
                     List<PathEditor.Point> points = PathEditor.points(editableSpec(),
                             config.width, config.height, config.densityDpi);
@@ -355,7 +365,8 @@ final class ShapePreview extends View {
                 } else if (Math.hypot(x - cx, y - (config.offsetY + config.shapeHeight))
                         < resizeThreshold) {
                     dragShape = 2;
-                } else if (inside || Math.hypot(x - cx, y - cy) < threshold) {
+                } else if (inside || (!resizeHandlesOnly
+                        && Math.hypot(x - cx, y - cy) < threshold)) {
                     dragShape = 0;
                 }
                 if (dragShape != -1) {
@@ -366,7 +377,7 @@ final class ShapePreview extends View {
                     return true;
                 }
             }
-            if (listener != null && !editApproximation) {
+            if (!resizeHandlesOnly && listener != null && !editApproximation) {
                 float upper = radius(true, config.width, config.height);
                 float lower = radius(false, config.width, config.height);
                 if (Math.hypot(x - upper, y - upper) < threshold) dragCorner = 0;

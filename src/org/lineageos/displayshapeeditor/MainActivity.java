@@ -52,8 +52,10 @@ public final class MainActivity extends Activity {
     private boolean editApproximation;
     private TextView pointLabel;
     private CheckBox linkBounds;
+    private CheckBox resizeOnlyCheck;
     private boolean rotated;
     private boolean expandedCanvas;
+    private boolean resizeHandlesOnly;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -64,6 +66,7 @@ public final class MainActivity extends Activity {
         config.densityDpi = metrics.densityDpi;
         String saved = getPreferences(MODE_PRIVATE).getString("draft", null);
         expandedCanvas = getPreferences(MODE_PRIVATE).getBoolean("expandedCanvas", false);
+        resizeHandlesOnly = getPreferences(MODE_PRIVATE).getBoolean("resizeHandlesOnly", false);
         if (saved != null) {
             try { config = ShapeConfig.fromJson(saved); }
             catch (JSONException ignored) { /* Start fresh if the draft is damaged. */ }
@@ -141,6 +144,7 @@ public final class MainActivity extends Activity {
         header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
         header.addView(button("Reset", this::confirmReset));
         preview = new ShapePreview(this, config, this::updateRadius);
+        preview.setResizeHandlesOnly(resizeHandlesOnly);
         preview.setShapeListener(this::updateShape);
         preview.setEditApproximation(editApproximation);
         attachPathListener(preview);
@@ -176,6 +180,15 @@ public final class MainActivity extends Activity {
         scroll.addView(form);
         status = text("", 14);
         form.addView(status);
+        resizeOnlyCheck = new CheckBox(this);
+        resizeOnlyCheck.setText("Show resize dots only");
+        resizeOnlyCheck.setChecked(resizeHandlesOnly);
+        resizeOnlyCheck.setOnCheckedChangeListener((v, checked) -> {
+            resizeHandlesOnly = checked;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("resizeHandlesOnly", checked).apply();
+            preview.setResizeHandlesOnly(checked);
+        });
+        form.addView(resizeOnlyCheck);
         heading(form, "Target display");
         LinearLayout dimensions = row(form);
         field(dimensions, "Native width (px)", Integer.toString(config.width),
@@ -554,8 +567,10 @@ public final class MainActivity extends Activity {
                     config.densityDpi = getResources().getDisplayMetrics().densityDpi;
                     rotated = false;
                     expandedCanvas = false;
+                    resizeHandlesOnly = false;
                     editApproximation = false;
-                    getPreferences(MODE_PRIVATE).edit().putBoolean("expandedCanvas", false).apply();
+                    getPreferences(MODE_PRIVATE).edit().putBoolean("expandedCanvas", false)
+                            .putBoolean("resizeHandlesOnly", false).apply();
                     showEditor();
                 }).show();
     }
@@ -583,6 +598,7 @@ public final class MainActivity extends Activity {
         });
         canvas.setFullScreen(true);
         canvas.setCalibration(true);
+        canvas.setResizeHandlesOnly(resizeHandlesOnly);
         canvas.setRotated(rotated);
         canvas.setEditApproximation(editApproximation);
         canvas.setShapeListener((width, height, x, y) -> {
@@ -627,6 +643,16 @@ public final class MainActivity extends Activity {
             canvas.setCalibration(show);
             guides.setText(show ? "Hide guides" : "Show guides");
         });
+        LinearLayout options = row(tools);
+        CheckBox resizeOnly = new CheckBox(this);
+        resizeOnly.setText("Resize dots only");
+        resizeOnly.setTextColor(Color.WHITE);
+        resizeOnly.setChecked(resizeHandlesOnly);
+        resizeOnly.setOnCheckedChangeListener((v, checked) -> {
+            resizeOnlyCheck.setChecked(checked);
+            canvas.setResizeHandlesOnly(checked);
+        });
+        addHalf(options, resizeOnly);
         dialog.setContentView(frame);
         openImmersive(dialog);
     }
