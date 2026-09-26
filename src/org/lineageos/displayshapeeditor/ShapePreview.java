@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Region;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -35,6 +36,9 @@ final class ShapePreview extends View {
     private float scale;
     private int dragCorner = -1;
     private int dragShape = -1;
+    private boolean draggingCutout;
+    private String cutoutAtDown;
+    private float cutoutDownX, cutoutDownY;
     private float downX, downY;
     private int initialX, initialY;
     private boolean panning;
@@ -199,6 +203,19 @@ final class ShapePreview extends View {
                 + (config.preset == 4 ? config.shapeWidth / 2f : 0);
     }
 
+    private boolean insideCutout(float x, float y) {
+        String spec = editApproximation ? config.approximation : config.cutout;
+        if (spec.trim().isEmpty()) return false;
+        try {
+            Region region = new Region();
+            region.setPath(CutoutPath.parse(spec, config.width, config.height, config.densityDpi),
+                    new Region(0, 0, config.width, config.height));
+            return region.contains(Math.round(x), Math.round(y));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     @Override public boolean onTouchEvent(MotionEvent event) {
         if (scale <= 0 || fullScreen && !calibration) return false;
         if (event.getActionMasked() == MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() == 2) {
@@ -206,6 +223,7 @@ final class ShapePreview extends View {
                     event.getY(0) - event.getY(1));
             pinchZoom = zoom;
             dragCorner = dragShape = -1;
+            draggingCutout = false;
             selectedPoint = -1;
             draggingPoint = false;
             panning = false;
@@ -239,13 +257,22 @@ final class ShapePreview extends View {
             startPanX = panX;
             startPanY = panY;
             float threshold = 44 * getResources().getDisplayMetrics().density / scale;
+            boolean inside = insideCutout(x, y);
             if (pathListener != null && !editableSpec().isEmpty()) {
                 try {
                     List<PathEditor.Point> points = PathEditor.points(editableSpec(),
                             config.width, config.height, config.densityDpi);
+                    float pointThreshold = threshold;
+                    if (inside) {
+                        RectF pathBounds = new RectF();
+                        CutoutPath.parse(editableSpec(), config.width, config.height,
+                                config.densityDpi).computeBounds(pathBounds, true);
+                        pointThreshold = Math.min(threshold,
+                                Math.min(pathBounds.width(), pathBounds.height()) / 5f);
+                    }
                     for (int i = points.size() - 1; i >= 0; i--) {
                         PathEditor.Point point = points.get(i);
-                        if (Math.hypot(x - point.x, y - point.y) < threshold) {
+                        if (Math.hypot(x - point.x, y - point.y) < pointThreshold) {
                             selectedPoint = i;
                             draggingPoint = true;
                             pathListener.onPointSelected(i, point.x, point.y);
@@ -255,15 +282,25 @@ final class ShapePreview extends View {
                     }
                 } catch (IllegalArgumentException ignored) { /* Text editor reports invalid paths. */ }
             }
+            if (inside && (config.preset == 0 || editApproximation) && pathListener != null) {
+                selectedPoint = -1;
+                draggingCutout = true;
+                cutoutAtDown = editableSpec();
+                cutoutDownX = x;
+                cutoutDownY = y;
+                return true;
+            }
             if (!editApproximation && config.preset != 0 && shapeListener != null) {
                 float cx = shapeCenterX();
                 float cy = config.offsetY + config.shapeHeight / 2f;
-                if (Math.hypot(x - (cx + config.shapeWidth / 2f), y - cy) < threshold) {
+                float resizeThreshold = Math.min(threshold,
+                        Math.min(config.shapeWidth, config.shapeHeight) / 4f);
+                if (Math.hypot(x - (cx + config.shapeWidth / 2f), y - cy) < resizeThreshold) {
                     dragShape = 1;
                 } else if (Math.hypot(x - cx, y - (config.offsetY + config.shapeHeight))
-                        < threshold) {
+                        < resizeThreshold) {
                     dragShape = 2;
-                } else if (Math.hypot(x - cx, y - cy) < threshold) {
+                } else if (inside || Math.hypot(x - cx, y - cy) < threshold) {
                     dragShape = 0;
                 }
                 if (dragShape != -1) {
@@ -291,6 +328,15 @@ final class ShapePreview extends View {
                 pathListener.onPathChanged(editApproximation, updated);
                 pathListener.onPointSelected(selectedPoint, x, y);
             } catch (IllegalArgumentException ignored) { /* Keep the previous valid path. */ }
+            return true;
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_MOVE && draggingCutout
+                && pathListener != null) {
+            try {
+                pathListener.onPathChanged(editApproximation,
+                        PathEditor.translate(cutoutAtDown, config.width, config.height,
+                                config.densityDpi, x - cutoutDownX, y - cutoutDownY));
+            } catch (IllegalArgumentException ignored) { /* Keep the last valid geometry. */ }
             return true;
         }
         if (event.getActionMasked() == MotionEvent.ACTION_MOVE && dragShape != -1) {
@@ -325,6 +371,7 @@ final class ShapePreview extends View {
                 || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
             dragCorner = -1;
             dragShape = -1;
+            draggingCutout = false;
             draggingPoint = false;
             panning = false;
             return true;

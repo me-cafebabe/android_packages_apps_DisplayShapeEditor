@@ -12,15 +12,18 @@ configuration and needs no root access.
 2. Drag either cyan corner handle to adjust the top or bottom radius, or enter
    values with `px`/`dp` units. A zero top/bottom radius inherits the default.
 3. Choose a notch, pill, or hole-punch preset. Drag its orange handles to move
-   it or adjust width and height. The numeric fields control position, size,
-   and curvature in native pixels. Editing the SVG text switches to custom
+   it or adjust width and height, or drag inside the dark cutout to move the
+   entire shape. The numeric fields control position, size, and curvature in
+   native pixels. Editing the SVG text switches to custom
    mode; there is no automatic conversion from arbitrary paths back to a
-   preset. In custom mode, tap an anchor or curve-control point and drag it,
-   nudge it by one pixel, or enter exact coordinates. Pinch to zoom and drag
+   preset. In custom mode, drag inside the cutout to move all its points, or
+   tap an anchor or curve-control point and drag it, nudge it by one pixel, or
+   enter exact coordinates. Pinch to zoom and drag
    empty canvas to pan; the `1x` and `2x` buttons reset the view.
 4. Use **Edit bounds** to create and separately edit the cutout's bounding
-   approximation. Its outline is cyan. If the approximation is empty, the
-   framework uses the visible path; enabling **Move approximation with visible
+   approximation. Drag inside it to move the whole approximation independently;
+   its outline is cyan. If the approximation is empty, the framework uses the
+   visible path; enabling **Move approximation with visible
    path** translates a custom approximation when the cutout is moved, but
    resizing a preset does not automatically resize a refined approximation.
    Check both paths after changing size.

@@ -342,7 +342,7 @@ public final class MainActivity extends Activity {
                 } else {
                     String old = config.cutout;
                     if (config.linkApproximation && !config.approximation.isEmpty()) {
-                        int selected = source.getSelectedPoint();
+                        int selected = Math.max(0, source.getSelectedPoint());
                         try {
                             List<PathEditor.Point> before = PathEditor.points(old, config.width,
                                     config.height, config.densityDpi);
