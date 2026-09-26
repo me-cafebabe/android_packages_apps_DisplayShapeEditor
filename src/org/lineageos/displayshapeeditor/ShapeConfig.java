@@ -39,6 +39,7 @@ final class ShapeConfig {
         }
         int rounding = Math.max(0, Math.min(curve, Math.min(shapeWidth, shapeHeight) / 2));
         if (preset == 3) {
+            float l = left, r = right, t = top, b = bottom;
             float cx = (left + right) / 2f;
             float cy = (top + bottom) / 2f;
             float rx = shapeWidth / 2f;
@@ -49,10 +50,10 @@ final class ShapeConfig {
                     + "C %.2f,%.2f %.2f,%.2f %.2f,%.2f "
                     + "C %.2f,%.2f %.2f,%.2f %.2f,%.2f "
                     + "C %.2f,%.2f %.2f,%.2f %.2f,%.2f Z",
-                    cx, top, cx - rx * k, top, left, cy - ry * k, left, cy,
-                    left, cy + ry * k, cx - rx * k, bottom, cx, bottom,
-                    cx + rx * k, bottom, right, cy + ry * k, right, cy,
-                    right, cy - ry * k, cx + rx * k, top, cx, top);
+                    cx, t, cx - rx * k, t, l, cy - ry * k, l, cy,
+                    l, cy + ry * k, cx - rx * k, b, cx, b,
+                    cx + rx * k, b, r, cy + ry * k, r, cy,
+                    r, cy - ry * k, cx + rx * k, t, cx, t);
         } else if (preset == 2) {
             cutout = "M " + (left + rounding) + "," + top
                     + " L " + (right - rounding) + "," + top
