@@ -11,16 +11,21 @@ import android.view.View;
 
 final class ShapePreview extends View {
     interface CornerListener { void onRadius(boolean top, int pixels); }
+    interface ShapeListener { void onShape(int width, int height, int offsetX, int offsetY); }
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF bounds = new RectF();
     private ShapeConfig config;
     private CornerListener listener;
+    private ShapeListener shapeListener;
     private boolean rotated;
     private boolean fullScreen;
     private boolean approximationVisible = true;
     private float scale;
     private int dragCorner = -1;
+    private int dragShape = -1;
+    private float downX, downY;
+    private int initialX, initialY;
 
     ShapePreview(Context context, ShapeConfig config, CornerListener listener) {
         super(context);
@@ -33,6 +38,7 @@ final class ShapePreview extends View {
     void setRotated(boolean value) { rotated = value; invalidate(); }
     void setFullScreen(boolean value) { fullScreen = value; invalidate(); }
     void setApproximationVisible(boolean value) { approximationVisible = value; invalidate(); }
+    void setShapeListener(ShapeListener value) { shapeListener = value; invalidate(); }
 
     @Override protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
@@ -111,6 +117,14 @@ final class ShapePreview extends View {
             float handle = Math.max(7, 9 / scale);
             canvas.drawCircle(upper, upper, handle, paint);
             canvas.drawCircle(lower, height - lower, handle, paint);
+            if (config.preset != 0 && shapeListener != null) {
+                float cx = shapeCenterX();
+                float cy = config.offsetY + config.shapeHeight / 2f;
+                paint.setColor(Color.rgb(212, 79, 35));
+                canvas.drawCircle(cx, cy, handle, paint);
+                canvas.drawCircle(cx + config.shapeWidth / 2f, cy, handle, paint);
+                canvas.drawCircle(cx, config.offsetY + config.shapeHeight, handle, paint);
+            }
         }
         canvas.restore();
     }
@@ -124,17 +138,57 @@ final class ShapePreview extends View {
         }
     }
 
+    private float shapeCenterX() {
+        return (config.preset == 4 ? 0 : config.width / 2f) + config.offsetX
+                + (config.preset == 4 ? config.shapeWidth / 2f : 0);
+    }
+
     @Override public boolean onTouchEvent(MotionEvent event) {
-        if (listener == null || rotated || scale <= 0) return false;
+        if ((listener == null && shapeListener == null) || rotated || scale <= 0) return false;
         float x = (event.getX() - bounds.left) / scale;
         float y = (event.getY() - bounds.top) / scale;
         if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+            float threshold = 44 * getResources().getDisplayMetrics().density / scale;
+            if (config.preset != 0 && shapeListener != null) {
+                float cx = shapeCenterX();
+                float cy = config.offsetY + config.shapeHeight / 2f;
+                if (Math.hypot(x - (cx + config.shapeWidth / 2f), y - cy) < threshold) {
+                    dragShape = 1;
+                } else if (Math.hypot(x - cx, y - (config.offsetY + config.shapeHeight))
+                        < threshold) {
+                    dragShape = 2;
+                } else if (Math.hypot(x - cx, y - cy) < threshold) {
+                    dragShape = 0;
+                }
+                if (dragShape != -1) {
+                    downX = x;
+                    downY = y;
+                    initialX = config.offsetX;
+                    initialY = config.offsetY;
+                    return true;
+                }
+            }
+            if (listener == null) return false;
             float upper = radius(true, config.width, config.height);
             float lower = radius(false, config.width, config.height);
-            float threshold = 44 * getResources().getDisplayMetrics().density / scale;
             if (Math.hypot(x - upper, y - upper) < threshold) dragCorner = 0;
             else if (Math.hypot(x - lower, y - (config.height - lower)) < threshold) dragCorner = 1;
             else return false;
+            return true;
+        }
+        if (event.getActionMasked() == MotionEvent.ACTION_MOVE && dragShape != -1) {
+            int width = config.shapeWidth, height = config.shapeHeight;
+            int offsetX = config.offsetX, offsetY = config.offsetY;
+            if (dragShape == 0) {
+                offsetX = initialX + Math.round(x - downX);
+                offsetY = initialY + Math.round(y - downY);
+            } else if (dragShape == 1) {
+                width = Math.max(1, Math.round(config.preset == 4
+                        ? x - config.offsetX : (x - shapeCenterX()) * 2));
+            } else {
+                height = Math.max(1, Math.round(y - config.offsetY));
+            }
+            shapeListener.onShape(width, height, offsetX, offsetY);
             return true;
         }
         if (event.getActionMasked() == MotionEvent.ACTION_MOVE && dragCorner != -1) {
@@ -147,6 +201,7 @@ final class ShapePreview extends View {
         if (event.getActionMasked() == MotionEvent.ACTION_UP
                 || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
             dragCorner = -1;
+            dragShape = -1;
             return true;
         }
         return false;

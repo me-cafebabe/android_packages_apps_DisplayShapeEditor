@@ -19,6 +19,57 @@ final class ShapeConfig {
     String adjustment = "0px";
     String topAdjustment = "0px";
     String bottomAdjustment = "0px";
+    int preset;
+    int shapeWidth = 220;
+    int shapeHeight = 80;
+    int offsetX;
+    int offsetY;
+    int curve;
+
+    void updatePresetPath() {
+        if (preset == 0) return;
+        int left = offsetX - shapeWidth / 2;
+        int right = left + shapeWidth;
+        int top = offsetY;
+        int bottom = top + shapeHeight;
+        if (preset == 4) {
+            left = offsetX;
+            right = left + shapeWidth;
+        }
+        int rounding = Math.max(0, Math.min(curve, Math.min(shapeWidth, shapeHeight) / 2));
+        if (preset == 3) {
+            float cx = (left + right) / 2f;
+            float cy = (top + bottom) / 2f;
+            float rx = shapeWidth / 2f;
+            float ry = shapeHeight / 2f;
+            float k = 0.55228475f;
+            cutout = String.format(java.util.Locale.ROOT,
+                    "M %.2f,%.2f C %.2f,%.2f %.2f,%.2f %.2f,%.2f "
+                    + "C %.2f,%.2f %.2f,%.2f %.2f,%.2f "
+                    + "C %.2f,%.2f %.2f,%.2f %.2f,%.2f "
+                    + "C %.2f,%.2f %.2f,%.2f %.2f,%.2f Z",
+                    cx, top, cx - rx * k, top, left, cy - ry * k, left, cy,
+                    left, cy + ry * k, cx - rx * k, bottom, cx, bottom,
+                    cx + rx * k, bottom, right, cy + ry * k, right, cy,
+                    right, cy - ry * k, cx + rx * k, top, cx, top);
+        } else if (preset == 2) {
+            cutout = "M " + (left + rounding) + "," + top
+                    + " L " + (right - rounding) + "," + top
+                    + " Q " + right + "," + top + " " + right + "," + (top + rounding)
+                    + " L " + right + "," + (bottom - rounding)
+                    + " Q " + right + "," + bottom + " " + (right - rounding) + "," + bottom
+                    + " L " + (left + rounding) + "," + bottom
+                    + " Q " + left + "," + bottom + " " + left + "," + (bottom - rounding)
+                    + " L " + left + "," + (top + rounding)
+                    + " Q " + left + "," + top + " " + (left + rounding) + "," + top + " Z";
+        } else {
+            cutout = "M " + left + "," + top + " L " + left + "," + (bottom - rounding)
+                    + " Q " + left + "," + bottom + " " + (left + rounding) + "," + bottom
+                    + " L " + (right - rounding) + "," + bottom
+                    + " Q " + right + "," + bottom + " " + right + "," + (bottom - rounding)
+                    + " L " + right + "," + top + " Z" + (preset == 4 ? " @left" : "");
+        }
+    }
 
     float pixels(String value) {
         String v = value.trim().toLowerCase(java.util.Locale.ROOT);
@@ -42,6 +93,9 @@ final class ShapeConfig {
         if (width < 1 || height < 1 || densityDpi < 1) {
             throw new IllegalArgumentException("Resolution and density must be positive");
         }
+        if (preset != 0 && (shapeWidth < 1 || shapeHeight < 1 || curve < 0)) {
+            throw new IllegalArgumentException("Preset size must be positive; curvature cannot be negative");
+        }
         for (String value : new String[]{radius, top, bottom, adjustment,
                 topAdjustment, bottomAdjustment}) {
             if (!value.matches("[0-9]+(\\.[0-9]+)?(px|dp|dip)")) {
@@ -59,6 +113,9 @@ final class ShapeConfig {
                 .put("fill", fill).put("mask", mask).put("radius", radius)
                 .put("top", top).put("bottom", bottom).put("adjustment", adjustment)
                 .put("topAdjustment", topAdjustment).put("bottomAdjustment", bottomAdjustment);
+        json.put("preset", preset).put("shapeWidth", shapeWidth)
+                .put("shapeHeight", shapeHeight).put("offsetX", offsetX)
+                .put("offsetY", offsetY).put("curve", curve);
         return json;
     }
 
@@ -78,6 +135,12 @@ final class ShapeConfig {
         c.adjustment = json.optString("adjustment", c.adjustment);
         c.topAdjustment = json.optString("topAdjustment", c.topAdjustment);
         c.bottomAdjustment = json.optString("bottomAdjustment", c.bottomAdjustment);
+        c.preset = json.optInt("preset");
+        c.shapeWidth = json.optInt("shapeWidth", c.shapeWidth);
+        c.shapeHeight = json.optInt("shapeHeight", c.shapeHeight);
+        c.offsetX = json.optInt("offsetX");
+        c.offsetY = json.optInt("offsetY");
+        c.curve = json.optInt("curve");
         return c;
     }
 }

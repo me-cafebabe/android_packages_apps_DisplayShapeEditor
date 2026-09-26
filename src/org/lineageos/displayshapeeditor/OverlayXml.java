@@ -81,6 +81,7 @@ final class OverlayXml {
         c.topAdjustment = get(entries, "dimen/rounded_corner_radius_top_adjustment", c.topAdjustment);
         c.bottomAdjustment = get(entries, "dimen/rounded_corner_radius_bottom_adjustment",
                 c.bottomAdjustment);
+        if (entries.containsKey("string/config_mainBuiltInDisplayCutout")) c.preset = 0;
         c.cutout = get(entries, "string/config_mainBuiltInDisplayCutout", c.cutout);
         String rect = entries.get("string/config_mainBuiltInDisplayCutoutRectApproximation");
         if (rect != null) {

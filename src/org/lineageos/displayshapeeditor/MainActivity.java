@@ -37,6 +37,12 @@ public final class MainActivity extends Activity {
     private TextView status;
     private EditText topField;
     private EditText bottomField;
+    private EditText pathField;
+    private EditText widthField;
+    private EditText heightField;
+    private EditText xField;
+    private EditText yField;
+    private boolean updatingPath;
     private boolean rotated;
     private boolean expandedCanvas;
 
@@ -125,6 +131,12 @@ public final class MainActivity extends Activity {
             if (top) topField.setText(pixels + "px");
             else bottomField.setText(pixels + "px");
         });
+        preview.setShapeListener((width, height, x, y) -> {
+            widthField.setText(Integer.toString(width));
+            heightField.setText(Integer.toString(height));
+            xField.setText(Integer.toString(x));
+            yField.setText(Integer.toString(y));
+        });
         root.addView(preview, new LinearLayout.LayoutParams(-1, canvasHeight()));
         LinearLayout actions = row(root);
         addHalf(actions, button("Rotate", () -> {
@@ -188,16 +200,42 @@ public final class MainActivity extends Activity {
 
         heading(form, "Display cutout");
         LinearLayout presets = row(form);
-        addHalf(presets, button("Notch", () -> setPath("M -110,0 L -110,80 L 110,80 L 110,0 Z")));
-        addHalf(presets, button("Hole punch", () -> setPath("M 0,30 C -17,30 -30,43 -30,60 "
-                + "C -30,77 -17,90 0,90 C 17,90 30,77 30,60 C 30,43 17,30 0,30 Z")));
+        addHalf(presets, button("Notch", () -> setPreset(1)));
+        addHalf(presets, button("Pill", () -> setPreset(2)));
         LinearLayout other = row(form);
-        addHalf(other, button("No cutout", () -> setPath("")));
-        addHalf(other, button("Left notch", () -> setPath("M 0,0 L 0,80 L 200,80 L 200,0 Z @left")));
-        EditText path = field(row(form), "Cutout path (SVG path + optional markers)", config.cutout,
-                s -> config.cutout = s);
-        path.setSingleLine(false);
-        path.setMinLines(2);
+        addHalf(other, button("Hole punch", () -> setPreset(3)));
+        addHalf(other, button("Left notch", () -> setPreset(4)));
+        addHalf(row(form), button("No cutout", () -> {
+            config.preset = 0;
+            config.cutout = "";
+            config.approximation = "";
+            showEditor();
+        }));
+        if (config.preset != 0) {
+            form.addView(text("Drag orange dots to move or resize; enter native pixels for precision.", 13));
+            LinearLayout size = row(form);
+            widthField = field(size, "Width (px)", Integer.toString(config.shapeWidth),
+                    s -> { config.shapeWidth = integer(s); updatePreset(); });
+            heightField = field(size, "Height (px)", Integer.toString(config.shapeHeight),
+                    s -> { config.shapeHeight = integer(s); updatePreset(); });
+            LinearLayout position = row(form);
+            xField = field(position, "X offset (px)", Integer.toString(config.offsetX),
+                    s -> { config.offsetX = integer(s); updatePreset(); });
+            yField = field(position, "Y offset (px)", Integer.toString(config.offsetY),
+                    s -> { config.offsetY = integer(s); updatePreset(); });
+            field(row(form), "Corner curve (px)", Integer.toString(config.curve),
+                    s -> { config.curve = integer(s); updatePreset(); });
+        }
+        pathField = field(row(form), "Cutout path (editing switches to custom mode)", config.cutout,
+                s -> {
+                    config.cutout = s;
+                    if (!updatingPath) {
+                        config.preset = 0;
+                        preview.invalidate();
+                    }
+                });
+        pathField.setSingleLine(false);
+        pathField.setMinLines(2);
         EditText approximation = field(row(form), "Bounding approximation (optional)",
                 config.approximation, s -> config.approximation = s);
         approximation.setSingleLine(false);
@@ -271,10 +309,27 @@ public final class MainActivity extends Activity {
         catch (NumberFormatException e) { return 0; }
     }
 
-    private void setPath(String value) {
-        config.cutout = value;
+    private void setPreset(int preset) {
+        config.preset = preset;
+        config.shapeWidth = preset == 3 ? 60 : 220;
+        config.shapeHeight = preset == 3 ? 60 : 80;
+        config.offsetX = 0;
+        config.offsetY = preset == 3 ? 30 : 0;
+        config.curve = preset == 2 ? 30 : 0;
+        config.updatePresetPath();
         config.approximation = "";
         showEditor();
+    }
+
+    private void updatePreset() {
+        if (config.shapeWidth < 1 || config.shapeHeight < 1 || config.curve < 0) return;
+        config.updatePresetPath();
+        if (pathField != null) {
+            updatingPath = true;
+            pathField.setText(config.cutout);
+            updatingPath = false;
+        }
+        preview.invalidate();
     }
 
     private void changed() {
