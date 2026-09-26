@@ -38,6 +38,7 @@ public final class MainActivity extends Activity {
     private EditText topField;
     private EditText bottomField;
     private boolean rotated;
+    private boolean expandedCanvas;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -47,6 +48,7 @@ public final class MainActivity extends Activity {
         DisplayMetrics metrics = getResources().getDisplayMetrics();
         config.densityDpi = metrics.densityDpi;
         String saved = getPreferences(MODE_PRIVATE).getString("draft", null);
+        expandedCanvas = getPreferences(MODE_PRIVATE).getBoolean("expandedCanvas", false);
         if (saved != null) {
             try { config = ShapeConfig.fromJson(saved); }
             catch (JSONException ignored) { /* Start fresh if the draft is damaged. */ }
@@ -123,12 +125,24 @@ public final class MainActivity extends Activity {
             if (top) topField.setText(pixels + "px");
             else bottomField.setText(pixels + "px");
         });
-        root.addView(preview, new LinearLayout.LayoutParams(-1, dp(320)));
+        root.addView(preview, new LinearLayout.LayoutParams(-1, canvasHeight()));
         LinearLayout actions = row(root);
-        addHalf(actions, button("Rotate preview", () -> {
+        addHalf(actions, button("Rotate", () -> {
             rotated = !rotated;
             preview.setRotated(rotated);
         }));
+        Button resize = new Button(this);
+        resize.setText(expandedCanvas ? "Smaller" : "Larger");
+        resize.setAllCaps(false);
+        resize.setContentDescription("Toggle larger editor canvas");
+        addHalf(actions, resize);
+        resize.setOnClickListener(v -> {
+            expandedCanvas = !expandedCanvas;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("expandedCanvas", expandedCanvas).apply();
+            preview.getLayoutParams().height = canvasHeight();
+            preview.requestLayout();
+            resize.setText(expandedCanvas ? "Smaller" : "Larger");
+        });
         addHalf(actions, button("Full screen", this::showFullScreenPreview));
 
         ScrollView scroll = new ScrollView(this);
@@ -215,6 +229,12 @@ public final class MainActivity extends Activity {
         addHalf(files, button("Export XML", this::exportXml));
         addHalf(row(form), button("View XML", this::viewXml));
         changed();
+    }
+
+    private int canvasHeight() {
+        if (!expandedCanvas) return dp(320);
+        return Math.max(dp(320), Math.min(dp(560),
+                Math.round(getResources().getDisplayMetrics().heightPixels * 0.68f)));
     }
 
     private void showFullScreenPreview() {

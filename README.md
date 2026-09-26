@@ -18,9 +18,12 @@ configuration and needs no root access.
    Other SVG commands are rejected rather than exported with a misleading
    preview. For complex paths, create an approximation path separately; its
    outline is shown in cyan when enabled.
-4. Rotate the preview or open **Full screen** to see the drawing edge-to-edge
-   without guides or corner handles. Tap anywhere or press Back to return to
-   the editor. If the target display's aspect ratio differs from this device,
+4. Tap **Larger** to expand the in-editor canvas while keeping the fields
+   available below it; tap **Smaller** to restore its size. This choice is
+   remembered between launches. Rotate the preview or open **Full screen**
+   to see the drawing edge-to-edge without guides or corner handles. Tap
+   anywhere or press Back to return to the editor. If the target display's
+   aspect ratio differs from this device,
    unused space remains around the drawing. The display drawing is an
    approximation, not the framework's actual cutout/insets calculation.
 5. Use **View XML** to inspect the output. **Export XML** saves
