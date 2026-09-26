@@ -1,5 +1,7 @@
 package org.lineageos.displayshapeeditor;
 
+import android.graphics.RectF;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -95,6 +97,30 @@ final class PathEditor {
                 for (int i = 0; i < command.coordinates.length; i += 2) {
                     command.coordinates[i] += dx / editor.factor;
                     command.coordinates[i + 1] += dy / editor.factor;
+                }
+            }
+        }
+        return editor.serialize();
+    }
+
+    static String resize(String spec, int width, int height, int densityDpi,
+            RectF oldBounds, RectF newBounds) {
+        if (oldBounds.width() <= 0 || oldBounds.height() <= 0
+                || newBounds.width() <= 0 || newBounds.height() <= 0) {
+            throw new IllegalArgumentException("Cutout needs nonzero width and height to resize");
+        }
+        PathEditor editor = new PathEditor(spec, width, height, densityDpi);
+        float scaleX = newBounds.width() / oldBounds.width();
+        float scaleY = newBounds.height() / oldBounds.height();
+        for (Segment segment : editor.segments) {
+            for (Command command : segment.commands) {
+                for (int i = 0; i < command.coordinates.length; i += 2) {
+                    float x = segment.originX + command.coordinates[i] * editor.factor;
+                    float y = segment.originY + command.coordinates[i + 1] * editor.factor;
+                    command.coordinates[i] = (newBounds.left
+                            + (x - oldBounds.left) * scaleX - segment.originX) / editor.factor;
+                    command.coordinates[i + 1] = (newBounds.top
+                            + (y - oldBounds.top) * scaleY - segment.originY) / editor.factor;
                 }
             }
         }

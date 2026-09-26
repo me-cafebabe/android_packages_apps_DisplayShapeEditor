@@ -52,7 +52,6 @@ public final class MainActivity extends Activity {
     private boolean editApproximation;
     private TextView pointLabel;
     private CheckBox linkBounds;
-    private int lastPresetX, lastPresetY;
     private boolean rotated;
     private boolean expandedCanvas;
 
@@ -331,8 +330,6 @@ public final class MainActivity extends Activity {
         addHalf(files, button("Import XML", this::importXml));
         addHalf(files, button("Export XML", this::exportXml));
         addHalf(row(form), button("View XML", this::viewXml));
-        lastPresetX = config.offsetX;
-        lastPresetY = config.offsetY;
         changed();
     }
 
@@ -422,16 +419,20 @@ public final class MainActivity extends Activity {
                 } else {
                     String old = config.cutout;
                     if (config.linkApproximation && !config.approximation.isEmpty()) {
-                        int selected = Math.max(0, source.getSelectedPoint());
-                        try {
-                            List<PathEditor.Point> before = PathEditor.points(old, config.width,
-                                    config.height, config.densityDpi);
-                            List<PathEditor.Point> after = PathEditor.points(path, config.width,
-                                    config.height, config.densityDpi);
-                            syncApproximation(old, path,
-                                    after.get(selected).x - before.get(selected).x,
-                                    after.get(selected).y - before.get(selected).y);
-                        } catch (RuntimeException ignored) { /* Keep an independently edited bound. */ }
+                        if (source.getSelectedPoint() < 0) {
+                            syncApproximationGeometry(old, path);
+                        } else {
+                            try {
+                                int selected = source.getSelectedPoint();
+                                List<PathEditor.Point> before = PathEditor.points(old, config.width,
+                                        config.height, config.densityDpi);
+                                List<PathEditor.Point> after = PathEditor.points(path, config.width,
+                                        config.height, config.densityDpi);
+                                syncApproximation(old, path,
+                                        after.get(selected).x - before.get(selected).x,
+                                        after.get(selected).y - before.get(selected).y);
+                            } catch (RuntimeException ignored) { /* Preserve invalid bound text. */ }
+                        }
                     }
                     updatingPath = true;
                     pathField.setText(path);
@@ -515,6 +516,24 @@ public final class MainActivity extends Activity {
                     : PathEditor.translate(config.approximation, config.width, config.height,
                             config.densityDpi, dx, dy));
         } catch (IllegalArgumentException ignored) { /* Preserve invalid text for correction. */ }
+    }
+
+    private void syncApproximationGeometry(String previous, String updated) {
+        if (!config.linkApproximation || config.approximation.isEmpty()) return;
+        try {
+            if (config.approximation.equals(previous)) {
+                approximationField.setText(updated);
+                return;
+            }
+            RectF before = new RectF();
+            RectF after = new RectF();
+            CutoutPath.parse(previous, config.width, config.height, config.densityDpi)
+                    .computeBounds(before, true);
+            CutoutPath.parse(updated, config.width, config.height, config.densityDpi)
+                    .computeBounds(after, true);
+            approximationField.setText(PathEditor.resize(config.approximation, config.width,
+                    config.height, config.densityDpi, before, after));
+        } catch (IllegalArgumentException ignored) { /* Preserve invalid bound text for correction. */ }
     }
 
     private int canvasHeight() {
@@ -655,14 +674,11 @@ public final class MainActivity extends Activity {
         String old = config.cutout;
         config.updatePresetPath();
         if (pathField != null) {
-            if (approximationField != null) syncApproximation(old, config.cutout,
-                    config.offsetX - lastPresetX, config.offsetY - lastPresetY);
+            if (approximationField != null) syncApproximationGeometry(old, config.cutout);
             updatingPath = true;
             pathField.setText(config.cutout);
             updatingPath = false;
         }
-        lastPresetX = config.offsetX;
-        lastPresetY = config.offsetY;
         preview.invalidate();
         refreshPositionFields();
     }
